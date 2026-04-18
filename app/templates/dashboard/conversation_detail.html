@@ -1,0 +1,199 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Chat — {{ contact.profile_name or contact.phone }}{% endblock %}
+{% block page_title %}
+  <div class="flex items-center gap-3">
+    <a href="/conversations" class="text-gray-400 hover:text-gray-600"><i class="fas fa-arrow-left"></i></a>
+    <div class="w-8 h-8 bg-teal-100 rounded-full flex items-center justify-center">
+      <span class="text-teal-700 font-semibold text-sm">{{ (contact.profile_name or contact.name or contact.phone)[0].upper() }}</span>
+    </div>
+    <div>
+      <p class="text-sm font-semibold leading-tight">{{ contact.profile_name or contact.name or contact.phone }}</p>
+      <p class="text-xs text-gray-400 font-normal">+{{ contact.phone }}</p>
+    </div>
+  </div>
+{% endblock %}
+
+{% block header_actions %}
+<div class="flex gap-2">
+  <button onclick="closeConversation()" class="text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600">
+    <i class="fas fa-check-circle mr-1"></i>Close
+  </button>
+  <button onclick="aiReply()" id="ai-btn" class="text-xs px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center gap-1.5">
+    <i class="fas fa-robot"></i> AI Reply
+  </button>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="flex gap-4 h-[calc(100vh-10rem)]">
+  <!-- Chat Window -->
+  <div class="flex-1 bg-white rounded-xl border border-gray-100 shadow-sm flex flex-col overflow-hidden">
+    <!-- Messages -->
+    <div id="messages" class="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin" style="background: #f0f2f5;">
+      {% for msg in messages %}
+      <div class="flex {% if msg.direction.value == 'outbound' %}justify-end{% else %}justify-start{% endif %}">
+        <div class="max-w-xs lg:max-w-md">
+          <div class="{% if msg.direction.value == 'outbound' %}bubble-out{% else %}bubble-in{% endif %} px-4 py-2.5 shadow-sm">
+            {% if msg.media_url %}
+            <div class="mb-1 text-xs text-gray-500 flex items-center gap-1"><i class="fas fa-paperclip"></i> Media</div>
+            {% endif %}
+            <p class="text-sm text-gray-800 whitespace-pre-wrap">{{ msg.content or '[media]' }}</p>
+            <div class="flex items-center justify-end gap-1 mt-1">
+              <span class="text-xs text-gray-400">{{ msg.created_at.strftime('%H:%M') }}</span>
+              {% if msg.direction.value == 'outbound' %}
+                {% if msg.status.value == 'read' %}<i class="fas fa-check-double text-blue-500 text-xs"></i>
+                {% elif msg.status.value == 'delivered' %}<i class="fas fa-check-double text-gray-400 text-xs"></i>
+                {% elif msg.status.value == 'sent' %}<i class="fas fa-check text-gray-400 text-xs"></i>
+                {% else %}<i class="fas fa-clock text-gray-300 text-xs"></i>{% endif %}
+              {% endif %}
+              {% if msg.is_ai_reply %}<span class="text-xs text-purple-400"><i class="fas fa-robot"></i></span>{% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Input -->
+    <div class="px-4 py-3 border-t border-gray-100 bg-white">
+      <div id="ai-suggestion" class="hidden mb-2 p-3 bg-purple-50 rounded-lg border border-purple-100">
+        <p class="text-xs text-purple-600 font-medium mb-1"><i class="fas fa-robot"></i> AI Suggestion</p>
+        <p class="text-sm text-gray-700" id="ai-suggestion-text"></p>
+        <div class="flex gap-2 mt-2">
+          <button onclick="useAiSuggestion()" class="text-xs bg-purple-600 text-white px-3 py-1 rounded-md">Use This</button>
+          <button onclick="dismissAi()" class="text-xs text-gray-400 px-3 py-1 rounded-md hover:bg-gray-100">Dismiss</button>
+        </div>
+      </div>
+      <form id="msg-form" class="flex gap-2">
+        <textarea id="msg-input" rows="1" placeholder="Type a message..."
+          class="flex-1 resize-none border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 scrollbar-thin"
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg();}"></textarea>
+        <button type="button" onclick="sendMsg()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 rounded-xl transition flex items-center gap-1">
+          <i class="fas fa-paper-plane text-sm"></i>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Contact Info Panel -->
+  <div class="w-64 bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex-shrink-0 overflow-y-auto scrollbar-thin">
+    <div class="text-center mb-5">
+      <div class="w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-3">
+        <span class="text-teal-700 font-bold text-2xl">{{ (contact.profile_name or contact.name or contact.phone)[0].upper() }}</span>
+      </div>
+      <p class="font-semibold text-gray-800 text-sm">{{ contact.profile_name or contact.name or 'Unknown' }}</p>
+      <p class="text-xs text-gray-400">+{{ contact.phone }}</p>
+    </div>
+
+    <div class="space-y-3 text-xs">
+      {% if contact.email %}
+      <div class="flex items-center gap-2 text-gray-600">
+        <i class="fas fa-envelope w-4 text-gray-400"></i> {{ contact.email }}
+      </div>
+      {% endif %}
+      <div class="flex items-center gap-2 text-gray-600">
+        <i class="fas fa-circle w-4 {% if contact.is_opted_in %}text-green-400{% else %}text-red-400{% endif %}"></i>
+        {{ 'Opted In' if contact.is_opted_in else 'Opted Out' }}
+      </div>
+      {% if contact.tags %}
+      <div>
+        <p class="text-gray-400 mb-1">Tags</p>
+        <div class="flex flex-wrap gap-1">
+          {% for tag in contact.tags %}
+          <span class="bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full text-xs">{{ tag }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      {% if contact.notes %}
+      <div>
+        <p class="text-gray-400 mb-1">Notes</p>
+        <p class="text-gray-600">{{ contact.notes }}</p>
+      </div>
+      {% endif %}
+      <div class="flex items-center gap-2 text-gray-400">
+        <i class="fas fa-calendar w-4"></i> Since {{ contact.created_at.strftime('%d %b %Y') }}
+      </div>
+    </div>
+
+    <a href="/contacts" class="mt-5 block text-center text-xs text-teal-600 hover:underline">
+      Edit Contact
+    </a>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const convId = {{ conv.id }};
+
+  function scrollBottom() {
+    const el = document.getElementById('messages');
+    el.scrollTop = el.scrollHeight;
+  }
+  scrollBottom();
+
+  async function sendMsg() {
+    const input = document.getElementById('msg-input');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    const fd = new FormData();
+    fd.append('message', text);
+    const r = await fetch(`/conversations/${convId}/send`, {method: 'POST', body: fd});
+    if (r.ok) {
+      appendMsg(text, 'outbound');
+      scrollBottom();
+    }
+  }
+
+  async function aiReply() {
+    const btn = document.getElementById('ai-btn');
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+    btn.disabled = true;
+    const r = await fetch(`/conversations/${convId}/ai-reply`, {method: 'POST'});
+    btn.innerHTML = '<i class="fas fa-robot"></i> AI Reply';
+    btn.disabled = false;
+    if (r.ok) {
+      const data = await r.json();
+      document.getElementById('ai-suggestion-text').textContent = data.reply;
+      document.getElementById('ai-suggestion').classList.remove('hidden');
+    }
+  }
+
+  function useAiSuggestion() {
+    const text = document.getElementById('ai-suggestion-text').textContent;
+    document.getElementById('msg-input').value = text;
+    dismissAi();
+    sendMsg();
+  }
+
+  function dismissAi() {
+    document.getElementById('ai-suggestion').classList.add('hidden');
+  }
+
+  async function closeConversation() {
+    if (!confirm('Close this conversation?')) return;
+    await fetch(`/conversations/${convId}/close`, {method: 'POST'});
+    window.location.href = '/conversations';
+  }
+
+  function appendMsg(text, dir) {
+    const container = document.getElementById('messages');
+    const isOut = dir === 'outbound';
+    const now = new Date().toTimeString().slice(0, 5);
+    container.insertAdjacentHTML('beforeend', `
+      <div class="flex ${isOut ? 'justify-end' : 'justify-start'}">
+        <div class="max-w-xs lg:max-w-md">
+          <div class="${isOut ? 'bubble-out' : 'bubble-in'} px-4 py-2.5 shadow-sm">
+            <p class="text-sm text-gray-800 whitespace-pre-wrap">${text}</p>
+            <div class="flex items-center justify-end gap-1 mt-1">
+              <span class="text-xs text-gray-400">${now}</span>
+              ${isOut ? '<i class="fas fa-clock text-gray-300 text-xs"></i>' : ''}
+            </div>
+          </div>
+        </div>
+      </div>`);
+  }
+</script>
+{% endblock %}

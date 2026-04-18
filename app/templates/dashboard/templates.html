@@ -1,0 +1,139 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Templates — Viviz WhatsApp{% endblock %}
+{% block page_title %}Message Templates{% endblock %}
+
+{% block header_actions %}
+<button onclick="document.getElementById('new-modal').classList.remove('hidden')"
+  class="text-xs px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg flex items-center gap-1">
+  <i class="fas fa-plus"></i> New Template
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="mb-4 bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-blue-700">
+  <i class="fas fa-sync-alt mr-1"></i>
+  Templates are synced from your Meta WhatsApp Business Account. Only <strong>APPROVED</strong> templates can be used in broadcasts.
+  Reload this page to refresh from Meta.
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+  {% for t in templates %}
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+    <div class="flex items-start justify-between mb-3">
+      <div>
+        <p class="font-medium text-gray-800 text-sm">{{ t.name }}</p>
+        <p class="text-xs text-gray-400 mt-0.5">{{ t.language }} · {{ t.category }}</p>
+      </div>
+      {% if t.status == 'APPROVED' %}
+      <span class="text-xs bg-green-50 text-green-600 px-2 py-0.5 rounded-full flex-shrink-0">Approved</span>
+      {% elif t.status == 'PENDING' %}
+      <span class="text-xs bg-yellow-50 text-yellow-600 px-2 py-0.5 rounded-full flex-shrink-0">Pending</span>
+      {% else %}
+      <span class="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full flex-shrink-0">Rejected</span>
+      {% endif %}
+    </div>
+
+    {% if t.header_content %}
+    <div class="mb-2 text-xs font-medium text-gray-500 uppercase tracking-wide">Header</div>
+    <p class="text-xs text-gray-600 mb-2 bg-gray-50 rounded px-2 py-1">{{ t.header_content }}</p>
+    {% endif %}
+
+    <div class="mb-2 text-xs font-medium text-gray-500 uppercase tracking-wide">Body</div>
+    <p class="text-sm text-gray-700 bg-gray-50 rounded px-3 py-2 whitespace-pre-wrap">{{ t.body }}</p>
+
+    {% if t.footer %}
+    <p class="text-xs text-gray-400 mt-2 italic">{{ t.footer }}</p>
+    {% endif %}
+
+    <div class="mt-3 pt-3 border-t border-gray-50 flex items-center justify-between">
+      <span class="text-xs text-gray-400">{{ t.created_at.strftime('%d %b %Y') }}</span>
+      <button onclick="deleteTemplate({{ t.id }}, this)" class="text-xs text-red-400 hover:text-red-600">
+        <i class="fas fa-trash"></i>
+      </button>
+    </div>
+  </div>
+  {% else %}
+  <div class="col-span-3 py-16 text-center text-gray-400">
+    <i class="fas fa-file-alt text-5xl mb-4 block opacity-20"></i>
+    <p>No templates found.</p>
+    <p class="text-sm mt-1">Templates are synced from your Meta Business Manager.</p>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Create Template Modal -->
+<div id="new-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
+    <div class="flex items-center justify-between mb-5">
+      <h3 class="font-semibold text-gray-800">Create Template (Local)</h3>
+      <button onclick="document.getElementById('new-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div class="bg-yellow-50 border border-yellow-100 rounded-lg p-3 mb-4 text-xs text-yellow-700">
+      <i class="fas fa-info-circle mr-1"></i>
+      To use in broadcasts, templates must be submitted and approved in Meta Business Manager.
+      This saves a local draft only.
+    </div>
+    <form id="tpl-form" class="space-y-4">
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Template Name *</label>
+          <input type="text" name="name" required placeholder="hello_world"
+            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Category *</label>
+          <select name="category" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400">
+            <option value="UTILITY">Utility</option>
+            <option value="MARKETING">Marketing</option>
+            <option value="AUTHENTICATION">Authentication</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Language</label>
+        <select name="language" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400">
+          <option value="en">English</option>
+          <option value="ta">Tamil</option>
+          <option value="hi">Hindi</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Body *</label>
+        <textarea name="body" required rows="4" placeholder="Hello {{1}}, your order is confirmed!"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none"></textarea>
+        <p class="text-xs text-gray-400 mt-1">Use &#123;&#123;1&#125;&#125;, &#123;&#123;2&#125;&#125; for variables</p>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Footer (optional)</label>
+        <input type="text" name="footer" placeholder="Viviz Technologies"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
+      </div>
+      <button type="button" onclick="createTemplate()" class="w-full bg-teal-600 hover:bg-teal-700 text-white py-2.5 rounded-lg text-sm font-medium">
+        Save Local Template
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  async function createTemplate() {
+    const fd = new FormData(document.getElementById('tpl-form'));
+    const r = await fetch('/templates/create', {method: 'POST', body: fd});
+    if (r.ok) location.reload();
+    else {
+      const d = await r.json();
+      alert(d.error || 'Failed to create template');
+    }
+  }
+
+  async function deleteTemplate(id, btn) {
+    if (!confirm('Delete this template?')) return;
+    const r = await fetch(`/templates/${id}`, {method: 'DELETE'});
+    if (r.ok) location.reload();
+  }
+</script>
+{% endblock %}

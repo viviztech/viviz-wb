@@ -1,0 +1,102 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Dashboard — Viviz WhatsApp{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- Stats Grid -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  {% set stats = [
+    ("Total Contacts", total_contacts, "fa-address-book", "bg-blue-500", "text-blue-600", "bg-blue-50"),
+    ("Open Chats", open_conversations, "fa-comments", "bg-green-500", "text-green-600", "bg-green-50"),
+    ("Messages Today", messages_today, "fa-paper-plane", "bg-teal-500", "text-teal-600", "bg-teal-50"),
+    ("Received Today", inbound_today, "fa-inbox", "bg-purple-500", "text-purple-600", "bg-purple-50"),
+  ] %}
+  {% for label, value, icon, icon_bg, text_color, card_bg in stats %}
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+    <div class="flex items-center justify-between mb-3">
+      <div class="w-10 h-10 {{ icon_bg }} rounded-xl flex items-center justify-center">
+        <i class="fas {{ icon }} text-white text-sm"></i>
+      </div>
+    </div>
+    <p class="text-2xl font-bold text-gray-800">{{ value or 0 }}</p>
+    <p class="text-sm text-gray-500 mt-1">{{ label }}</p>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Quick Actions + Recent Conversations -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <!-- Quick Actions -->
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+    <h2 class="text-sm font-semibold text-gray-700 mb-4">Quick Actions</h2>
+    <div class="space-y-2">
+      <a href="/contacts" class="flex items-center gap-3 p-3 rounded-lg bg-gray-50 hover:bg-teal-50 hover:text-teal-700 transition text-sm text-gray-700">
+        <i class="fas fa-user-plus w-5 text-center text-teal-600"></i> Add Contact
+      </a>
+      <a href="/broadcasts" class="flex items-center gap-3 p-3 rounded-lg bg-gray-50 hover:bg-teal-50 hover:text-teal-700 transition text-sm text-gray-700">
+        <i class="fas fa-bullhorn w-5 text-center text-teal-600"></i> New Broadcast
+      </a>
+      <a href="/templates" class="flex items-center gap-3 p-3 rounded-lg bg-gray-50 hover:bg-teal-50 hover:text-teal-700 transition text-sm text-gray-700">
+        <i class="fas fa-file-alt w-5 text-center text-teal-600"></i> View Templates
+      </a>
+      <a href="/conversations" class="flex items-center gap-3 p-3 rounded-lg bg-gray-50 hover:bg-teal-50 hover:text-teal-700 transition text-sm text-gray-700">
+        <i class="fas fa-comments w-5 text-center text-teal-600"></i> All Conversations
+      </a>
+    </div>
+
+    <div class="mt-5 pt-4 border-t border-gray-100">
+      <p class="text-xs text-gray-500 mb-2 font-medium">API Info</p>
+      <div class="text-xs text-gray-400 space-y-1">
+        <div class="flex items-center gap-2"><i class="fas fa-circle text-green-400"></i> Webhook Active</div>
+        <div class="flex items-center gap-2"><i class="fas fa-circle text-green-400"></i> Meta Cloud API v21.0</div>
+        <div class="flex items-center gap-2"><i class="fas fa-circle text-blue-400"></i> Claude Opus 4.7 Ready</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Conversations -->
+  <div class="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm">
+    <div class="p-5 border-b border-gray-100 flex items-center justify-between">
+      <h2 class="text-sm font-semibold text-gray-700">Recent Conversations</h2>
+      <a href="/conversations" class="text-xs text-teal-600 hover:underline">View All</a>
+    </div>
+    <div class="divide-y divide-gray-50">
+      {% if recent_conversations %}
+        {% for item in recent_conversations %}
+        <a href="/conversations/{{ item.conv.id }}" class="flex items-center gap-4 px-5 py-3.5 hover:bg-gray-50 transition">
+          <div class="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center flex-shrink-0">
+            <span class="text-teal-700 font-semibold text-sm">
+              {{ (item.contact.profile_name or item.contact.name or item.contact.phone)[0].upper() }}
+            </span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-gray-800 truncate">
+              {{ item.contact.profile_name or item.contact.name or item.contact.phone }}
+            </p>
+            <p class="text-xs text-gray-400 truncate">
+              {{ item.last_msg.content[:60] if item.last_msg else "No messages" }}
+            </p>
+          </div>
+          <div class="flex-shrink-0 text-right">
+            <p class="text-xs text-gray-400">
+              {{ item.conv.last_message_at.strftime('%H:%M') if item.conv.last_message_at else '' }}
+            </p>
+            {% if item.conv.status == 'open' %}
+            <span class="text-xs text-green-600 font-medium">Open</span>
+            {% else %}
+            <span class="text-xs text-gray-400">Closed</span>
+            {% endif %}
+          </div>
+        </a>
+        {% endfor %}
+      {% else %}
+        <div class="py-12 text-center text-gray-400">
+          <i class="fas fa-comments text-3xl mb-3 block opacity-30"></i>
+          <p class="text-sm">No conversations yet</p>
+          <p class="text-xs mt-1">Messages will appear here when customers write in</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

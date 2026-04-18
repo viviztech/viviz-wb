@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-50">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}Viviz WhatsApp Business{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css"/>
+  <style>
+    :root { --wa-green: #25D366; --wa-dark: #075E54; --wa-light: #DCF8C6; }
+    .wa-green { color: var(--wa-green); }
+    .bg-wa-green { background-color: var(--wa-green); }
+    .bg-wa-dark { background-color: var(--wa-dark); }
+    .bubble-in { background: #fff; border-radius: 0 12px 12px 12px; }
+    .bubble-out { background: var(--wa-light); border-radius: 12px 0 12px 12px; }
+    .sidebar-link.active { background: rgba(255,255,255,0.15); }
+    .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+    [x-cloak] { display: none; }
+  </style>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body class="h-full flex">
+
+<!-- Sidebar -->
+<aside class="w-64 bg-wa-dark flex-shrink-0 flex flex-col min-h-screen">
+  <div class="px-6 py-5 border-b border-white/20">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 bg-wa-green rounded-full flex items-center justify-center">
+        <i class="fab fa-whatsapp text-white text-xl"></i>
+      </div>
+      <div>
+        <p class="text-white font-bold text-sm leading-tight">Viviz WhatsApp</p>
+        <p class="text-green-300 text-xs">Business Platform</p>
+      </div>
+    </div>
+  </div>
+
+  <nav class="flex-1 px-3 py-4 space-y-1">
+    {% set nav_items = [
+      ("/dashboard", "fa-chart-pie", "Dashboard", "dashboard"),
+      ("/conversations", "fa-comments", "Conversations", "conversations"),
+      ("/contacts", "fa-address-book", "Contacts", "contacts"),
+      ("/broadcasts", "fa-bullhorn", "Broadcasts", "broadcasts"),
+      ("/templates", "fa-file-alt", "Templates", "templates"),
+    ] %}
+    {% for href, icon, label, pg in nav_items %}
+    <a href="{{ href }}" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/80 hover:bg-white/10 transition {% if page == pg %}active text-white{% endif %}">
+      <i class="fas {{ icon }} w-5 text-center"></i>
+      <span class="text-sm font-medium">{{ label }}</span>
+    </a>
+    {% endfor %}
+  </nav>
+
+  <div class="px-4 py-4 border-t border-white/20">
+    <div class="flex items-center gap-3 mb-3">
+      <div class="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+        <i class="fas fa-user text-white text-xs"></i>
+      </div>
+      <div>
+        <p class="text-white text-xs font-medium">{{ admin_name }}</p>
+        <p class="text-green-300 text-xs">Administrator</p>
+      </div>
+    </div>
+    <a href="/logout" class="flex items-center gap-2 text-white/60 hover:text-white text-xs transition">
+      <i class="fas fa-sign-out-alt"></i> Logout
+    </a>
+  </div>
+</aside>
+
+<!-- Main Content -->
+<main class="flex-1 flex flex-col overflow-hidden">
+  <!-- Top Bar -->
+  <header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0">
+    <h1 class="text-lg font-semibold text-gray-800">{% block page_title %}Dashboard{% endblock %}</h1>
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-2 bg-green-50 text-green-700 text-xs px-3 py-1.5 rounded-full">
+        <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+        WhatsApp Connected
+      </div>
+      {% block header_actions %}{% endblock %}
+    </div>
+  </header>
+
+  <div class="flex-1 overflow-y-auto p-6">
+    {% block content %}{% endblock %}
+  </div>
+</main>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

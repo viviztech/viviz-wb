@@ -1,0 +1,157 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Contacts — Viviz WhatsApp{% endblock %}
+{% block page_title %}Contacts{% endblock %}
+
+{% block header_actions %}
+<div class="flex gap-2">
+  <a href="/contacts/export" class="text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 flex items-center gap-1">
+    <i class="fas fa-download"></i> Export CSV
+  </a>
+  <button onclick="document.getElementById('add-modal').classList.remove('hidden')"
+    class="text-xs px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg flex items-center gap-1">
+    <i class="fas fa-plus"></i> Add Contact
+  </button>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Search -->
+<form method="GET" class="mb-4 flex gap-2">
+  <div class="relative flex-1 max-w-sm">
+    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><i class="fas fa-search text-sm"></i></span>
+    <input type="text" name="q" value="{{ q }}" placeholder="Search by name or phone..."
+      class="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
+  </div>
+  <button type="submit" class="text-xs px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700">Search</button>
+  {% if q %}<a href="/contacts" class="text-xs px-4 py-2 text-gray-400 hover:text-gray-600 flex items-center">Clear</a>{% endif %}
+</form>
+
+<div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="bg-gray-50 text-left">
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Contact</th>
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Phone</th>
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Tags</th>
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Joined</th>
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Actions</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-50">
+      {% for c in contacts %}
+      <tr class="hover:bg-gray-50 transition">
+        <td class="px-5 py-3.5">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-teal-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <span class="text-teal-700 font-semibold text-xs">{{ (c.profile_name or c.name or c.phone)[0].upper() }}</span>
+            </div>
+            <div>
+              <p class="font-medium text-gray-800">{{ c.profile_name or c.name or '—' }}</p>
+              {% if c.email %}<p class="text-xs text-gray-400">{{ c.email }}</p>{% endif %}
+            </div>
+          </div>
+        </td>
+        <td class="px-5 py-3.5 text-gray-600 font-mono text-xs">+{{ c.phone }}</td>
+        <td class="px-5 py-3.5">
+          <div class="flex flex-wrap gap-1">
+            {% for tag in (c.tags or [])[:3] %}
+            <span class="text-xs bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full">{{ tag }}</span>
+            {% endfor %}
+          </div>
+        </td>
+        <td class="px-5 py-3.5">
+          {% if c.is_blocked %}
+          <span class="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full">Blocked</span>
+          {% elif c.is_opted_in %}
+          <span class="text-xs bg-green-50 text-green-600 px-2 py-0.5 rounded-full">Active</span>
+          {% else %}
+          <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Opted Out</span>
+          {% endif %}
+        </td>
+        <td class="px-5 py-3.5 text-xs text-gray-400">{{ c.created_at.strftime('%d %b %Y') }}</td>
+        <td class="px-5 py-3.5">
+          <div class="flex gap-2">
+            <button onclick="toggleBlock({{ c.id }}, this)"
+              class="text-xs {% if c.is_blocked %}text-green-600{% else %}text-red-400{% endif %} hover:underline">
+              {{ 'Unblock' if c.is_blocked else 'Block' }}
+            </button>
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="py-16 text-center text-gray-400">
+        <i class="fas fa-address-book text-4xl mb-3 block opacity-20"></i>
+        <p>No contacts found</p>
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Add Contact Modal -->
+<div id="add-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+    <div class="flex items-center justify-between mb-5">
+      <h3 class="font-semibold text-gray-800">Add New Contact</h3>
+      <button onclick="document.getElementById('add-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <form id="add-form" class="space-y-4">
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Phone Number *</label>
+        <input type="text" name="phone" required placeholder="919876543210"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
+        <p class="text-xs text-gray-400 mt-1">Enter with country code (e.g., 919876543210)</p>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Name</label>
+        <input type="text" name="name" placeholder="Full Name"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Email</label>
+        <input type="email" name="email" placeholder="email@example.com"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Tags (comma separated)</label>
+        <input type="text" name="tags" placeholder="customer, vip, lead"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+        <textarea name="notes" rows="2" placeholder="Internal notes..."
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none"></textarea>
+      </div>
+      <p id="add-error" class="text-xs text-red-500 hidden"></p>
+      <button type="button" onclick="addContact()" class="w-full bg-teal-600 hover:bg-teal-700 text-white py-2.5 rounded-lg text-sm font-medium">
+        Add Contact
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  async function addContact() {
+    const form = document.getElementById('add-form');
+    const fd = new FormData(form);
+    const r = await fetch('/contacts/add', {method: 'POST', body: fd});
+    const data = await r.json();
+    if (r.ok) {
+      location.reload();
+    } else {
+      document.getElementById('add-error').textContent = data.error;
+      document.getElementById('add-error').classList.remove('hidden');
+    }
+  }
+
+  async function toggleBlock(id, btn) {
+    const r = await fetch(`/contacts/${id}/block`, {method: 'POST'});
+    if (r.ok) location.reload();
+  }
+</script>
+{% endblock %}

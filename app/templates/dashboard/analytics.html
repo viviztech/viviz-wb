@@ -1,0 +1,190 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Analytics — Viviz WhatsApp{% endblock %}
+{% block page_title %}Analytics{% endblock %}
+
+{% block header_actions %}
+<div class="flex gap-1 text-xs">
+  <button onclick="loadData(7)" id="btn-7" class="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200">7d</button>
+  <button onclick="loadData(30)" id="btn-30" class="px-3 py-1.5 rounded-lg bg-teal-600 text-white">30d</button>
+  <button onclick="loadData(90)" id="btn-90" class="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200">90d</button>
+</div>
+{% endblock %}
+
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<!-- Summary cards -->
+<div id="summary-cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5 animate-pulse h-24"></div>
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5 animate-pulse h-24"></div>
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5 animate-pulse h-24"></div>
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5 animate-pulse h-24"></div>
+</div>
+
+<!-- Charts row -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+    <h2 class="text-sm font-semibold text-gray-700 mb-4">Message Volume</h2>
+    <canvas id="msg-chart" height="200"></canvas>
+  </div>
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+    <h2 class="text-sm font-semibold text-gray-700 mb-4">New Contacts</h2>
+    <canvas id="contact-chart" height="200"></canvas>
+  </div>
+</div>
+
+<!-- Broadcast stats + template performance -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+  <!-- Broadcast summary -->
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+    <h2 class="text-sm font-semibold text-gray-700 mb-4">Broadcast Summary</h2>
+    <div id="bc-stats" class="space-y-3 text-sm">
+      <div class="h-4 bg-gray-100 rounded animate-pulse"></div>
+      <div class="h-4 bg-gray-100 rounded animate-pulse w-3/4"></div>
+    </div>
+  </div>
+
+  <!-- Template performance -->
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+    <h2 class="text-sm font-semibold text-gray-700 mb-4">Top Templates by Send Volume</h2>
+    <div id="tpl-stats" class="space-y-3">
+      <div class="h-4 bg-gray-100 rounded animate-pulse"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let msgChart, contactChart;
+  let currentDays = 30;
+
+  async function loadData(days) {
+    currentDays = days;
+    ['7','30','90'].forEach(d => {
+      const btn = document.getElementById(`btn-${d}`);
+      btn.className = d == days
+        ? 'px-3 py-1.5 rounded-lg bg-teal-600 text-white text-xs'
+        : 'px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 text-xs';
+    });
+
+    const r = await fetch(`/analytics/data?days=${days}`);
+    const data = await r.json();
+    renderSummary(data);
+    renderMsgChart(data.message_volume);
+    renderContactChart(data.contact_growth);
+    renderBroadcast(data.broadcast_summary);
+    renderTemplates(data.template_performance);
+  }
+
+  function renderSummary(data) {
+    const t = data.totals;
+    const bc = data.broadcast_summary;
+    const cards = [
+      { label: 'Total Contacts', value: t.contacts, icon: 'fa-address-book', color: 'bg-blue-500' },
+      { label: `Messages (${currentDays}d)`, value: t.messages_period, icon: 'fa-paper-plane', color: 'bg-teal-500' },
+      { label: 'Open Conversations', value: t.open_conversations, icon: 'fa-comments', color: 'bg-green-500' },
+      { label: 'Delivery Rate', value: bc.delivery_rate + '%', icon: 'fa-check-double', color: 'bg-purple-500' },
+    ];
+    document.getElementById('summary-cards').innerHTML = cards.map(c => `
+      <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+        <div class="w-10 h-10 ${c.color} rounded-xl flex items-center justify-center mb-3">
+          <i class="fas ${c.icon} text-white text-sm"></i>
+        </div>
+        <p class="text-2xl font-bold text-gray-800">${c.value}</p>
+        <p class="text-sm text-gray-500 mt-1">${c.label}</p>
+      </div>`).join('');
+  }
+
+  function renderMsgChart(data) {
+    const ctx = document.getElementById('msg-chart').getContext('2d');
+    const labels = data.map(d => d.date.slice(5));
+    if (msgChart) msgChart.destroy();
+    msgChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Inbound', data: data.map(d => d.inbound), backgroundColor: '#14b8a6', borderRadius: 3 },
+          { label: 'Outbound', data: data.map(d => d.outbound), backgroundColor: '#a7f3d0', borderRadius: 3 },
+        ]
+      },
+      options: {
+        responsive: true, plugins: { legend: { position: 'bottom' } },
+        scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { color: '#f1f5f9' } } }
+      }
+    });
+  }
+
+  function renderContactChart(data) {
+    const ctx = document.getElementById('contact-chart').getContext('2d');
+    const labels = data.map(d => d.date.slice(5));
+    if (contactChart) contactChart.destroy();
+    contactChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'New Contacts',
+          data: data.map(d => d.count),
+          borderColor: '#7c3aed',
+          backgroundColor: 'rgba(124,58,237,0.08)',
+          tension: 0.4, fill: true, pointRadius: 2,
+        }]
+      },
+      options: {
+        responsive: true, plugins: { legend: { display: false } },
+        scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { color: '#f1f5f9' } } }
+      }
+    });
+  }
+
+  function renderBroadcast(bc) {
+    document.getElementById('bc-stats').innerHTML = `
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        ${[
+          ['Broadcasts Sent', bc.total],
+          ['Total Recipients', bc.total_recipients],
+          ['Messages Sent', bc.sent],
+          ['Delivered', bc.delivered],
+          ['Failed', bc.failed],
+          ['Delivery Rate', bc.delivery_rate + '%'],
+        ].map(([l,v]) => `
+          <div class="bg-gray-50 rounded-lg p-3">
+            <p class="text-xs text-gray-500">${l}</p>
+            <p class="text-lg font-bold text-gray-800 mt-0.5">${v}</p>
+          </div>`).join('')}
+      </div>
+      ${bc.sent > 0 ? `
+      <div class="mt-3">
+        <div class="flex justify-between text-xs text-gray-500 mb-1">
+          <span>Delivery rate</span><span>${bc.delivery_rate}%</span>
+        </div>
+        <div class="h-2 bg-gray-100 rounded-full">
+          <div class="h-2 bg-teal-500 rounded-full" style="width:${bc.delivery_rate}%"></div>
+        </div>
+      </div>` : ''}
+    `;
+  }
+
+  function renderTemplates(tpls) {
+    if (!tpls.length) {
+      document.getElementById('tpl-stats').innerHTML = '<p class="text-sm text-gray-400 py-4 text-center">No completed broadcasts in this period.</p>';
+      return;
+    }
+    const maxSent = Math.max(...tpls.map(t => t.sent), 1);
+    document.getElementById('tpl-stats').innerHTML = tpls.map(t => `
+      <div>
+        <div class="flex justify-between text-xs mb-1">
+          <span class="font-medium text-gray-700 truncate max-w-[180px]">${t.name}</span>
+          <span class="text-gray-400">${t.sent} sent · ${t.delivery_rate}% delivered</span>
+        </div>
+        <div class="h-2 bg-gray-100 rounded-full">
+          <div class="h-2 bg-teal-500 rounded-full" style="width:${Math.round(t.sent/maxSent*100)}%"></div>
+        </div>
+      </div>`).join('');
+  }
+
+  loadData(30);
+</script>
+{% endblock %}

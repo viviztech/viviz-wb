@@ -16,23 +16,28 @@
 {% block header_actions %}
 <div class="flex gap-2">
   <button onclick="closeConversation()" class="text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600">
-    <i class="fas fa-check-circle mr-1"></i>Close
+    <i class="fas fa-check-circle mr-1"></i><span class="hidden sm:inline">Close</span>
   </button>
   <button onclick="aiReply()" id="ai-btn" class="text-xs px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center gap-1.5">
-    <i class="fas fa-robot"></i> AI Reply
+    <i class="fas fa-robot"></i> <span class="hidden sm:inline">AI Reply</span>
+  </button>
+  <!-- Mobile: toggle contact info panel -->
+  <button onclick="toggleContactPanel()" id="info-btn"
+    class="lg:hidden text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600">
+    <i class="fas fa-info-circle"></i>
   </button>
 </div>
 {% endblock %}
 
 {% block content %}
-<div class="flex gap-4 h-[calc(100vh-10rem)]">
+<div class="flex flex-col lg:flex-row gap-4 h-[calc(100vh-10rem)]">
   <!-- Chat Window -->
-  <div class="flex-1 bg-white rounded-xl border border-gray-100 shadow-sm flex flex-col overflow-hidden">
+  <div class="flex-1 bg-white rounded-xl border border-gray-100 shadow-sm flex flex-col overflow-hidden min-h-0">
     <!-- Messages -->
     <div id="messages" class="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin" style="background: #f0f2f5;">
       {% for msg in messages %}
       <div class="flex {% if msg.direction.value == 'outbound' %}justify-end{% else %}justify-start{% endif %}">
-        <div class="max-w-xs lg:max-w-md">
+        <div class="max-w-[85vw] sm:max-w-xs lg:max-w-md">
           <div class="{% if msg.direction.value == 'outbound' %}bubble-out{% else %}bubble-in{% endif %} px-4 py-2.5 shadow-sm">
             {% if msg.media_url %}
             <div class="mb-1 text-xs text-gray-500 flex items-center gap-1"><i class="fas fa-paperclip"></i> Media</div>
@@ -64,10 +69,22 @@
           <button onclick="dismissAi()" class="text-xs text-gray-400 px-3 py-1 rounded-md hover:bg-gray-100">Dismiss</button>
         </div>
       </div>
+
+      <!-- Quick reply picker (shown when typing / or clicking bolt) -->
+      <div id="qr-picker" class="hidden mb-2 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+        <div id="qr-list" class="divide-y divide-gray-50"></div>
+      </div>
+
       <form id="msg-form" class="flex gap-2">
-        <textarea id="msg-input" rows="1" placeholder="Type a message..."
+        <button type="button" onclick="toggleQRPicker()"
+          class="flex-shrink-0 w-9 h-9 border border-gray-200 rounded-xl text-gray-400 hover:text-teal-600 hover:border-teal-300 flex items-center justify-center transition"
+          title="Quick Replies">
+          <i class="fas fa-bolt text-sm"></i>
+        </button>
+        <textarea id="msg-input" rows="1" placeholder="Type a message or / for quick replies..."
           class="flex-1 resize-none border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 scrollbar-thin"
-          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg();}"></textarea>
+          onkeydown="handleInputKey(event)"
+          oninput="handleInputChange(this)"></textarea>
         <button type="button" onclick="sendMsg()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 rounded-xl transition flex items-center gap-1">
           <i class="fas fa-paper-plane text-sm"></i>
         </button>
@@ -75,8 +92,8 @@
     </div>
   </div>
 
-  <!-- Contact Info Panel -->
-  <div class="w-64 bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex-shrink-0 overflow-y-auto scrollbar-thin">
+  <!-- Contact Info Panel (hidden on mobile, toggled by info button) -->
+  <div id="contact-panel" class="hidden lg:block lg:w-64 w-full bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex-shrink-0 overflow-y-auto scrollbar-thin lg:max-h-none max-h-64">
     <div class="text-center mb-5">
       <div class="w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-3">
         <span class="text-teal-700 font-bold text-2xl">{{ (contact.profile_name or contact.name or contact.phone)[0].upper() }}</span>
@@ -116,7 +133,23 @@
       </div>
     </div>
 
-    <a href="/contacts" class="mt-5 block text-center text-xs text-teal-600 hover:underline">
+    <!-- Assignment -->
+    <div class="mt-4 pt-4 border-t border-gray-100">
+      <p class="text-xs text-gray-400 mb-2 font-medium">Assigned To</p>
+      <div class="flex gap-1">
+        <input type="text" id="assignee-input" value="{{ conv.assigned_to or '' }}"
+          placeholder="email or name"
+          class="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-teal-400"/>
+        <button onclick="assignConv()" class="text-xs bg-teal-600 text-white px-2 py-1.5 rounded-lg hover:bg-teal-700">
+          <i class="fas fa-check"></i>
+        </button>
+      </div>
+      {% if conv.assigned_to %}
+      <p class="text-xs text-teal-600 mt-1"><i class="fas fa-user-check mr-1"></i>{{ conv.assigned_to }}</p>
+      {% endif %}
+    </div>
+
+    <a href="/contacts" class="mt-4 block text-center text-xs text-teal-600 hover:underline">
       Edit Contact
     </a>
   </div>
@@ -126,6 +159,12 @@
 {% block scripts %}
 <script>
   const convId = {{ conv.id }};
+  let allQRs = [];
+
+  function toggleContactPanel() {
+    const panel = document.getElementById('contact-panel');
+    panel.classList.toggle('hidden');
+  }
 
   function scrollBottom() {
     const el = document.getElementById('messages');
@@ -133,11 +172,69 @@
   }
   scrollBottom();
 
+  // Load quick replies once
+  fetch('/quick-replies/api').then(r => r.json()).then(data => { allQRs = data; });
+
+  function handleInputKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+    if (e.key === 'Escape') hideQRPicker();
+  }
+
+  function handleInputChange(el) {
+    const val = el.value;
+    if (val.startsWith('/')) {
+      const query = val.slice(1).toLowerCase();
+      const matches = allQRs.filter(q =>
+        (q.shortcut && q.shortcut.toLowerCase().startsWith(query)) ||
+        q.title.toLowerCase().includes(query)
+      );
+      renderQRPicker(matches);
+    } else {
+      hideQRPicker();
+    }
+  }
+
+  function toggleQRPicker() {
+    const picker = document.getElementById('qr-picker');
+    if (picker.classList.contains('hidden')) {
+      renderQRPicker(allQRs);
+    } else {
+      hideQRPicker();
+    }
+  }
+
+  function renderQRPicker(items) {
+    const list = document.getElementById('qr-list');
+    const picker = document.getElementById('qr-picker');
+    if (!items.length) { hideQRPicker(); return; }
+    list.innerHTML = items.map(q => `
+      <button type="button" onclick="insertQR(${JSON.stringify(q.message).replace(/"/g, '&quot;')})"
+        class="w-full text-left px-4 py-2.5 hover:bg-teal-50 transition">
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-medium text-gray-800">${q.title}</span>
+          ${q.shortcut ? `<code class="text-xs text-teal-600 bg-gray-100 px-1.5 rounded">/${q.shortcut}</code>` : ''}
+        </div>
+        <p class="text-xs text-gray-400 truncate mt-0.5">${q.message.slice(0, 80)}${q.message.length > 80 ? '…' : ''}</p>
+      </button>`).join('');
+    picker.classList.remove('hidden');
+  }
+
+  function insertQR(message) {
+    document.getElementById('msg-input').value = message;
+    hideQRPicker();
+    document.getElementById('msg-input').focus();
+  }
+
+  function hideQRPicker() {
+    document.getElementById('qr-picker').classList.add('hidden');
+  }
+
   async function sendMsg() {
     const input = document.getElementById('msg-input');
     const text = input.value.trim();
     if (!text) return;
     input.value = '';
+    hideQRPicker();
     const fd = new FormData();
     fd.append('message', text);
     const r = await fetch(`/conversations/${convId}/send`, {method: 'POST', body: fd});
@@ -178,13 +275,32 @@
     window.location.href = '/conversations';
   }
 
+  async function assignConv() {
+    const assignee = document.getElementById('assignee-input').value.trim();
+    const fd = new FormData();
+    fd.append('assignee', assignee);
+    const r = await fetch(`/conversations/${convId}/assign`, {method: 'POST', body: fd});
+    if (r.ok) {
+      const data = await r.json();
+      showToast(data.assigned_to ? `Assigned to ${data.assigned_to}` : 'Assignment cleared');
+    }
+  }
+
+  function showToast(msg) {
+    const t = document.createElement('div');
+    t.className = 'fixed bottom-6 right-6 bg-gray-900 text-white text-sm px-4 py-3 rounded-xl shadow-xl z-50';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 3000);
+  }
+
   function appendMsg(text, dir) {
     const container = document.getElementById('messages');
     const isOut = dir === 'outbound';
     const now = new Date().toTimeString().slice(0, 5);
     container.insertAdjacentHTML('beforeend', `
       <div class="flex ${isOut ? 'justify-end' : 'justify-start'}">
-        <div class="max-w-xs lg:max-w-md">
+        <div class="max-w-[85vw] sm:max-w-xs lg:max-w-md">
           <div class="${isOut ? 'bubble-out' : 'bubble-in'} px-4 py-2.5 shadow-sm">
             <p class="text-sm text-gray-800 whitespace-pre-wrap">${text}</p>
             <div class="flex items-center justify-end gap-1 mt-1">

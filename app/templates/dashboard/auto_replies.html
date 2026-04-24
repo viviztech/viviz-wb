@@ -1,0 +1,178 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Auto-Replies — Viviz WhatsApp{% endblock %}
+{% block page_title %}Auto-Reply Rules{% endblock %}
+
+{% block header_actions %}
+<button onclick="document.getElementById('new-modal').classList.remove('hidden')"
+  class="text-xs px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg flex items-center gap-1">
+  <i class="fas fa-plus"></i> New Rule
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="mb-4 bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-blue-700">
+  <i class="fas fa-robot mr-1"></i>
+  Auto-reply rules fire instantly when an incoming message matches a keyword — before AI replies.
+  Only the <strong>highest-priority matching rule</strong> fires per message.
+</div>
+
+<div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+  <div class="overflow-x-auto">
+  <table class="w-full text-sm min-w-[580px]">
+    <thead>
+      <tr class="bg-gray-50 text-left">
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Keyword</th>
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide hidden sm:table-cell">Match</th>
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Response</th>
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide hidden md:table-cell">Priority</th>
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide hidden md:table-cell">Fired</th>
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Actions</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-50">
+      {% for r in rules %}
+      <tr class="hover:bg-gray-50 transition {% if not r.is_active %}opacity-50{% endif %}">
+        <td class="px-5 py-3.5 whitespace-nowrap">
+          <code class="text-sm font-medium text-gray-800 bg-gray-100 px-2 py-0.5 rounded">{{ r.keyword }}</code>
+        </td>
+        <td class="px-5 py-3.5 hidden sm:table-cell whitespace-nowrap">
+          <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{{ r.match_type }}</span>
+        </td>
+        <td class="px-5 py-3.5 text-gray-500 text-xs max-w-[180px] sm:max-w-xs">
+          {% if r.template_name %}
+          <span class="text-teal-700"><i class="fas fa-file-alt mr-1"></i>{{ r.template_name }}</span>
+          {% else %}
+          <span class="truncate block">{{ r.reply_text[:80] }}{% if r.reply_text|length > 80 %}…{% endif %}</span>
+          {% endif %}
+        </td>
+        <td class="px-5 py-3.5 text-gray-500 text-xs hidden md:table-cell">{{ r.priority }}</td>
+        <td class="px-5 py-3.5 text-gray-500 text-xs hidden md:table-cell">{{ r.trigger_count }}</td>
+        <td class="px-5 py-3.5 whitespace-nowrap">
+          {% if r.is_active %}
+          <span class="text-xs bg-green-50 text-green-600 px-2 py-0.5 rounded-full">Active</span>
+          {% else %}
+          <span class="text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">Inactive</span>
+          {% endif %}
+        </td>
+        <td class="px-5 py-3.5 whitespace-nowrap">
+          <div class="flex gap-3">
+            <button onclick="toggleRule({{ r.id }}, this)" class="text-xs {% if r.is_active %}text-yellow-600{% else %}text-green-600{% endif %} hover:underline">
+              {{ 'Disable' if r.is_active else 'Enable' }}
+            </button>
+            <button onclick="deleteRule({{ r.id }}, this)" class="text-xs text-red-400 hover:text-red-600">Delete</button>
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="py-16 text-center text-gray-400">
+        <i class="fas fa-robot text-4xl mb-3 block opacity-20"></i>
+        <p>No auto-reply rules yet.</p>
+        <p class="text-sm mt-1">Rules trigger instant replies when keywords are detected.</p>
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<!-- New Rule Modal -->
+<div id="new-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-[min(32rem,90vw)] p-6 max-h-[90vh] overflow-y-auto">
+    <div class="flex items-center justify-between mb-5">
+      <h3 class="font-semibold text-gray-800">New Auto-Reply Rule</h3>
+      <button onclick="document.getElementById('new-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <form id="rule-form" class="space-y-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Keyword *</label>
+          <input type="text" name="keyword" required placeholder="e.g. PRICE, hi, website"
+            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
+          <p class="text-xs text-gray-400 mt-1">Case-insensitive</p>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Match Type</label>
+          <select name="match_type" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400">
+            <option value="contains">Contains</option>
+            <option value="exact">Exact match</option>
+            <option value="starts_with">Starts with</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Response Type</label>
+        <div class="flex gap-3 mb-3">
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="radio" name="resp_type" value="text" checked onchange="toggleRespType(this.value)"/> Free text
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="radio" name="resp_type" value="template" onchange="toggleRespType(this.value)"/> Template
+          </label>
+        </div>
+        <div id="resp-text-field">
+          <textarea name="reply_text" rows="3" placeholder="Your reply message..."
+            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none"></textarea>
+        </div>
+        <div id="resp-tpl-field" class="hidden">
+          <select name="template_name" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400">
+            <option value="">Select approved template...</option>
+            {% for t in approved_templates %}
+            <option value="{{ t.name }}">{{ t.name }} ({{ t.language }})</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Priority (higher fires first)</label>
+        <input type="number" name="priority" value="0" min="0" max="100"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
+      </div>
+
+      <p id="rule-error" class="text-xs text-red-500 hidden"></p>
+      <button type="button" onclick="createRule()"
+        class="w-full bg-teal-600 hover:bg-teal-700 text-white py-2.5 rounded-lg text-sm font-medium">
+        Save Rule
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function toggleRespType(val) {
+    document.getElementById('resp-text-field').classList.toggle('hidden', val === 'template');
+    document.getElementById('resp-tpl-field').classList.toggle('hidden', val !== 'template');
+  }
+
+  async function createRule() {
+    const fd = new FormData(document.getElementById('rule-form'));
+    const errEl = document.getElementById('rule-error');
+    const r = await fetch('/auto-replies/create', {method: 'POST', body: fd});
+    const data = await r.json();
+    if (r.ok) {
+      document.getElementById('new-modal').classList.add('hidden');
+      location.reload();
+    } else {
+      errEl.textContent = data.error || 'Failed to save';
+      errEl.classList.remove('hidden');
+    }
+  }
+
+  async function toggleRule(id, btn) {
+    const r = await fetch(`/auto-replies/${id}/toggle`, {method: 'POST'});
+    if (r.ok) location.reload();
+  }
+
+  async function deleteRule(id, btn) {
+    if (!confirm('Delete this rule?')) return;
+    const r = await fetch(`/auto-replies/${id}`, {method: 'DELETE'});
+    if (r.ok) location.reload();
+  }
+</script>
+{% endblock %}

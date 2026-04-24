@@ -1,0 +1,133 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Webhook Logs — Viviz WhatsApp{% endblock %}
+{% block page_title %}Webhook Logs{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap gap-2 mb-4 items-center">
+  <span class="text-sm text-gray-500 flex-shrink-0">{{ total }} events</span>
+  <!-- Filter by event type -->
+  <div class="flex gap-1 flex-wrap">
+    <a href="/webhook/logs" class="text-xs px-3 py-1.5 rounded-lg {% if not event_type_filter %}bg-teal-600 text-white{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200{% endif %}">All</a>
+    {% for et in event_types %}
+    <a href="/webhook/logs?event_type={{ et }}"
+      class="text-xs px-3 py-1.5 rounded-lg {% if event_type_filter == et %}bg-teal-600 text-white{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200{% endif %}">
+      {{ et }}
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+  <div class="overflow-x-auto">
+  <table class="w-full text-sm min-w-[540px]">
+    <thead>
+      <tr class="bg-gray-50 text-left">
+        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">ID</th>
+        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase">Event</th>
+        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase">From</th>
+        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase hidden md:table-cell">WA Message ID</th>
+        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
+        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">Time</th>
+        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase">Actions</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-50">
+      {% for log in logs %}
+      <tr class="hover:bg-gray-50 transition">
+        <td class="px-4 py-3 text-xs text-gray-400 hidden sm:table-cell">{{ log.id }}</td>
+        <td class="px-4 py-3 whitespace-nowrap">
+          <span class="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-700">{{ log.event_type or '—' }}</span>
+        </td>
+        <td class="px-4 py-3 text-xs text-gray-600 font-mono whitespace-nowrap">{{ log.from_phone or '—' }}</td>
+        <td class="px-4 py-3 text-xs text-gray-400 font-mono truncate max-w-[140px] hidden md:table-cell">{{ log.wa_message_id or '—' }}</td>
+        <td class="px-4 py-3 whitespace-nowrap">
+          {% if log.processed == 'error' %}
+          <span class="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full">Error</span>
+          {% elif log.processed == 'replayed' %}
+          <span class="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">Replayed</span>
+          {% else %}
+          <span class="text-xs bg-green-50 text-green-600 px-2 py-0.5 rounded-full">OK</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3 text-xs text-gray-400 whitespace-nowrap hidden sm:table-cell">{{ log.created_at.strftime('%d %b %H:%M:%S') }}</td>
+        <td class="px-4 py-3 whitespace-nowrap">
+          <div class="flex gap-2">
+            <button onclick="viewPayload({{ log.id }}, {{ log.payload | tojson | e }})"
+              class="text-xs text-teal-600 hover:underline">View</button>
+            {% if log.event_type == 'message' %}
+            <button onclick="replayLog({{ log.id }}, this)"
+              class="text-xs text-orange-500 hover:underline">Replay</button>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="py-16 text-center text-gray-400">
+        <i class="fas fa-stream text-4xl mb-3 block opacity-20"></i>
+        <p>No webhook events recorded yet.</p>
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  {% if total_pages > 1 %}
+  <div class="px-5 py-3 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-2">
+    <span class="text-xs text-gray-400">Page {{ current_page }} of {{ total_pages }}</span>
+    <div class="flex gap-1">
+      {% if current_page > 1 %}
+      <a href="/webhook/logs?page={{ current_page - 1 }}{% if event_type_filter %}&event_type={{ event_type_filter }}{% endif %}"
+        class="text-xs px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600">
+        <i class="fas fa-chevron-left mr-1"></i>Prev
+      </a>
+      {% endif %}
+      {% if current_page < total_pages %}
+      <a href="/webhook/logs?page={{ current_page + 1 }}{% if event_type_filter %}&event_type={{ event_type_filter }}{% endif %}"
+        class="text-xs px-3 py-1.5 bg-teal-600 hover:bg-teal-700 rounded-lg text-white">
+        Next<i class="fas fa-chevron-right ml-1"></i>
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Payload viewer modal -->
+<div id="payload-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-[min(42rem,90vw)] p-6 max-h-[80vh] flex flex-col">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="font-semibold text-gray-800">Payload — Log <span id="modal-log-id"></span></h3>
+      <button onclick="document.getElementById('payload-modal').classList.add('hidden')"
+        class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+    </div>
+    <pre id="payload-content"
+      class="flex-1 overflow-auto bg-gray-900 text-green-300 text-xs p-4 rounded-xl font-mono leading-relaxed"></pre>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function viewPayload(id, payload) {
+    document.getElementById('modal-log-id').textContent = id;
+    document.getElementById('payload-content').textContent = JSON.stringify(payload, null, 2);
+    document.getElementById('payload-modal').classList.remove('hidden');
+  }
+
+  async function replayLog(id, btn) {
+    if (!confirm('Re-process this webhook event? This may create duplicate messages.')) return;
+    btn.disabled = true;
+    btn.textContent = 'Replaying...';
+    const r = await fetch(`/webhook/logs/${id}/replay`, {method: 'POST'});
+    const data = await r.json();
+    if (r.ok) {
+      btn.textContent = 'Done';
+      btn.className = 'text-xs text-green-600';
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Replay';
+      alert('Replay failed: ' + (data.error || 'Unknown error'));
+    }
+  }
+</script>
+{% endblock %}

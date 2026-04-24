@@ -15,12 +15,17 @@ class Settings(BaseSettings):
     app_name: str = "Viviz WhatsApp Business"
     app_url: str = "http://localhost:8000"
     secret_key: str = "change_this_secret_key_minimum_32_characters"
+    api_key: str = ""
     admin_email: str = "admin@viviztech.in"
     admin_password: str = "Admin@1234"
     debug: bool = False
+    allowed_origins: str = "https://wb.viviz.in"
 
     # Database
     database_url: str = "sqlite+aiosqlite:///./whatsapp.db"
+
+    # Redis
+    redis_url: str = "redis://localhost:6379/0"
 
     # Claude AI
     anthropic_api_key: str = ""

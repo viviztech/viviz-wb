@@ -20,10 +20,17 @@
   </style>
   <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
-<body class="h-full flex">
+<body class="h-full flex" x-data="{ sidebarOpen: false }">
+
+<!-- Mobile overlay -->
+<div x-show="sidebarOpen" x-cloak
+  class="fixed inset-0 bg-black/50 z-20 md:hidden"
+  @click="sidebarOpen = false"></div>
 
 <!-- Sidebar -->
-<aside class="w-64 bg-wa-dark flex-shrink-0 flex flex-col min-h-screen">
+<aside x-cloak
+  :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
+  class="fixed inset-y-0 left-0 z-30 w-64 bg-wa-dark flex flex-col min-h-screen transition-transform duration-200 md:relative md:translate-x-0 md:flex-shrink-0">
   <div class="px-6 py-5 border-b border-white/20">
     <div class="flex items-center gap-3">
       <div class="w-9 h-9 bg-wa-green rounded-full flex items-center justify-center">
@@ -36,16 +43,21 @@
     </div>
   </div>
 
-  <nav class="flex-1 px-3 py-4 space-y-1">
+  <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
     {% set nav_items = [
       ("/dashboard", "fa-chart-pie", "Dashboard", "dashboard"),
       ("/conversations", "fa-comments", "Conversations", "conversations"),
       ("/contacts", "fa-address-book", "Contacts", "contacts"),
       ("/broadcasts", "fa-bullhorn", "Broadcasts", "broadcasts"),
       ("/templates", "fa-file-alt", "Templates", "templates"),
+      ("/quick-replies", "fa-bolt", "Quick Replies", "quick_replies"),
+      ("/auto-replies", "fa-robot", "Auto Replies", "auto_replies"),
+      ("/analytics", "fa-chart-bar", "Analytics", "analytics"),
+      ("/webhook/logs", "fa-stream", "Webhook Logs", "webhook_logs"),
     ] %}
     {% for href, icon, label, pg in nav_items %}
-    <a href="{{ href }}" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/80 hover:bg-white/10 transition {% if page == pg %}active text-white{% endif %}">
+    <a href="{{ href }}" @click="sidebarOpen = false"
+      class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/80 hover:bg-white/10 transition {% if page == pg %}active text-white{% endif %}">
       <i class="fas {{ icon }} w-5 text-center"></i>
       <span class="text-sm font-medium">{{ label }}</span>
     </a>
@@ -69,12 +81,17 @@
 </aside>
 
 <!-- Main Content -->
-<main class="flex-1 flex flex-col overflow-hidden">
+<main class="flex-1 flex flex-col overflow-hidden min-w-0">
   <!-- Top Bar -->
-  <header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0">
-    <h1 class="text-lg font-semibold text-gray-800">{% block page_title %}Dashboard{% endblock %}</h1>
-    <div class="flex items-center gap-4">
-      <div class="flex items-center gap-2 bg-green-50 text-green-700 text-xs px-3 py-1.5 rounded-full">
+  <header class="bg-white border-b border-gray-200 px-4 md:px-6 py-3 md:py-4 flex items-center gap-3 flex-shrink-0">
+    <!-- Hamburger (mobile only) -->
+    <button class="md:hidden flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500"
+      @click="sidebarOpen = true" aria-label="Open menu">
+      <i class="fas fa-bars"></i>
+    </button>
+    <h1 class="text-base md:text-lg font-semibold text-gray-800 flex-1 min-w-0 truncate">{% block page_title %}Dashboard{% endblock %}</h1>
+    <div class="flex items-center gap-2 md:gap-4 flex-shrink-0">
+      <div class="hidden sm:flex items-center gap-2 bg-green-50 text-green-700 text-xs px-3 py-1.5 rounded-full">
         <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
         WhatsApp Connected
       </div>
@@ -82,7 +99,7 @@
     </div>
   </header>
 
-  <div class="flex-1 overflow-y-auto p-6">
+  <div class="flex-1 overflow-y-auto p-4 md:p-6">
     {% block content %}{% endblock %}
   </div>
 </main>

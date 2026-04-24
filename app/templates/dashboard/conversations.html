@@ -4,11 +4,14 @@
 
 {% block content %}
 <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-  <div class="p-4 border-b border-gray-100 flex items-center justify-between">
-    <p class="text-sm text-gray-500">{{ conversations|length }} conversation{% if conversations|length != 1 %}s{% endif %}</p>
-    <a href="/contacts/export" class="text-xs text-teal-600 hover:underline flex items-center gap-1">
-      <i class="fas fa-filter"></i> Filter
-    </a>
+  <div class="p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2">
+    <p class="text-sm text-gray-500 flex-shrink-0">{{ total }} conversation{% if total != 1 %}s{% endif %}</p>
+    <!-- Status filter -->
+    <div class="flex flex-wrap gap-1 text-xs">
+      <a href="/conversations" class="px-3 py-1.5 rounded-lg {% if not status_filter %}bg-teal-600 text-white{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200{% endif %}">All</a>
+      <a href="/conversations?status=open" class="px-3 py-1.5 rounded-lg {% if status_filter == 'open' %}bg-teal-600 text-white{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200{% endif %}">Open</a>
+      <a href="/conversations?status=closed" class="px-3 py-1.5 rounded-lg {% if status_filter == 'closed' %}bg-teal-600 text-white{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200{% endif %}">Closed</a>
+    </div>
   </div>
 
   {% if conversations %}
@@ -47,10 +50,32 @@
     </a>
     {% endfor %}
   </div>
+
+  <!-- Pagination -->
+  {% if total_pages > 1 %}
+  <div class="px-5 py-3 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-2">
+    <span class="text-xs text-gray-400">Page {{ current_page }} of {{ total_pages }}</span>
+    <div class="flex gap-1">
+      {% if current_page > 1 %}
+      <a href="/conversations?page={{ current_page - 1 }}{% if status_filter %}&status={{ status_filter }}{% endif %}"
+        class="text-xs px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600">
+        <i class="fas fa-chevron-left mr-1"></i>Prev
+      </a>
+      {% endif %}
+      {% if current_page < total_pages %}
+      <a href="/conversations?page={{ current_page + 1 }}{% if status_filter %}&status={{ status_filter }}{% endif %}"
+        class="text-xs px-3 py-1.5 bg-teal-600 hover:bg-teal-700 rounded-lg text-white">
+        Next<i class="fas fa-chevron-right ml-1"></i>
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
   {% else %}
   <div class="py-20 text-center text-gray-400">
     <i class="fas fa-comments text-5xl mb-4 block opacity-20"></i>
-    <p class="text-base">No conversations yet</p>
+    <p class="text-base">No conversations found</p>
     <p class="text-sm mt-2">When customers message your WhatsApp number, they'll appear here.</p>
   </div>
   {% endif %}

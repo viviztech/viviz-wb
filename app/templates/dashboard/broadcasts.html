@@ -13,57 +13,86 @@
 {% if not templates %}
 <div class="mb-4 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-xl text-sm flex items-center gap-2">
   <i class="fas fa-exclamation-triangle"></i>
-  No approved templates found. <a href="/templates" class="underline font-medium">View Templates</a> to sync from Meta.
+  No approved templates found. <a href="/templates" class="underline font-medium ml-1">Sync Templates</a>
 </div>
 {% endif %}
 
 <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-  <table class="w-full text-sm">
+  <div class="overflow-x-auto">
+  <table class="w-full text-sm min-w-[640px]">
     <thead>
       <tr class="bg-gray-50 text-left">
         <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Name</th>
-        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Template</th>
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide hidden md:table-cell">Template</th>
         <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Recipients</th>
         <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Progress</th>
-        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Created</th>
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide hidden sm:table-cell">Progress</th>
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide hidden lg:table-cell">Scheduled / Created</th>
         <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Actions</th>
       </tr>
     </thead>
     <tbody class="divide-y divide-gray-50">
       {% for b in broadcasts %}
-      <tr class="hover:bg-gray-50 transition">
-        <td class="px-5 py-3.5 font-medium text-gray-800">{{ b.name }}</td>
-        <td class="px-5 py-3.5 text-gray-500 font-mono text-xs">{{ b.template_name }}</td>
+      <tr class="hover:bg-gray-50 transition" data-broadcast-id="{{ b.id }}" data-status="{{ b.status }}">
+        <td class="px-5 py-3.5 font-medium text-gray-800 whitespace-nowrap">{{ b.name }}</td>
+        <td class="px-5 py-3.5 text-gray-500 font-mono text-xs hidden md:table-cell">{{ b.template_name }}</td>
         <td class="px-5 py-3.5 text-gray-600">{{ b.total_count }}</td>
-        <td class="px-5 py-3.5">
+        <td class="px-5 py-3.5 whitespace-nowrap">
           {% if b.status == 'completed' %}
-          <span class="text-xs bg-green-50 text-green-600 px-2 py-0.5 rounded-full">Completed</span>
+          <span id="status-{{ b.id }}" class="text-xs bg-green-50 text-green-600 px-2 py-0.5 rounded-full">Completed</span>
           {% elif b.status == 'running' %}
-          <span class="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full animate-pulse">Running</span>
+          <span id="status-{{ b.id }}" class="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full animate-pulse">Running</span>
+          {% elif b.status == 'scheduled' %}
+          <span id="status-{{ b.id }}" class="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">Scheduled</span>
+          {% elif b.status == 'cancelled' %}
+          <span id="status-{{ b.id }}" class="text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">Cancelled</span>
           {% elif b.status == 'failed' %}
-          <span class="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full">Failed</span>
+          <span id="status-{{ b.id }}" class="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full">Failed</span>
           {% else %}
-          <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Draft</span>
+          <span id="status-{{ b.id }}" class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Draft</span>
           {% endif %}
         </td>
-        <td class="px-5 py-3.5">
+        <td class="px-5 py-3.5 hidden sm:table-cell">
           {% if b.total_count > 0 %}
-          <div class="flex items-center gap-2">
-            <div class="flex-1 h-1.5 bg-gray-100 rounded-full w-20">
-              <div class="h-1.5 bg-teal-500 rounded-full" style="width: {{ ((b.sent_count or 0) / b.total_count * 100)|int }}%"></div>
+          <div class="space-y-1">
+            <div class="flex items-center gap-2">
+              <div class="flex-1 h-1.5 bg-gray-100 rounded-full w-20">
+                <div id="bar-{{ b.id }}" class="h-1.5 bg-teal-500 rounded-full" style="width: {{ ((b.sent_count or 0) / b.total_count * 100)|int }}%"></div>
+              </div>
+              <span id="progress-{{ b.id }}" class="text-xs text-gray-400">{{ b.sent_count or 0 }}/{{ b.total_count }}</span>
             </div>
-            <span class="text-xs text-gray-400">{{ b.sent_count or 0 }}/{{ b.total_count }}</span>
+            <div id="delivered-{{ b.id }}" class="text-xs text-gray-400 {% if not b.delivered_count %}hidden{% endif %}">
+              <i class="fas fa-check-double text-teal-400 mr-1"></i>{{ b.delivered_count or 0 }} delivered
+            </div>
+            <button id="failed-{{ b.id }}" onclick="viewErrors({{ b.id }})"
+              class="text-xs text-red-500 hover:underline {% if not b.failed_count %}hidden{% endif %}">
+              <i class="fas fa-exclamation-circle mr-1"></i>{{ b.failed_count or 0 }} failed
+            </button>
           </div>
           {% else %}<span class="text-xs text-gray-400">—</span>{% endif %}
         </td>
-        <td class="px-5 py-3.5 text-xs text-gray-400">{{ b.created_at.strftime('%d %b %Y') }}</td>
-        <td class="px-5 py-3.5">
-          {% if b.status == 'draft' %}
-          <button onclick="sendBroadcast({{ b.id }}, this)" class="text-xs bg-teal-600 text-white px-3 py-1 rounded-lg hover:bg-teal-700">
-            <i class="fas fa-paper-plane mr-1"></i>Send
-          </button>
+        <td class="px-5 py-3.5 text-xs text-gray-400 hidden lg:table-cell whitespace-nowrap">
+          {% if b.scheduled_at and b.status == 'scheduled' %}
+          <span class="text-purple-600"><i class="fas fa-clock mr-1"></i>{{ b.scheduled_at.strftime('%d %b %Y %H:%M') }}</span>
+          {% else %}
+          {{ b.created_at.strftime('%d %b %Y %H:%M') }}
           {% endif %}
+        </td>
+        <td class="px-5 py-3.5">
+          <div class="flex gap-2">
+            {% if b.status == 'draft' %}
+            <button onclick="sendBroadcast({{ b.id }}, this)"
+              class="text-xs bg-teal-600 text-white px-3 py-1 rounded-lg hover:bg-teal-700">
+              <i class="fas fa-paper-plane mr-1"></i>Send Now
+            </button>
+            {% endif %}
+            {% if b.status in ('draft', 'scheduled') %}
+            <button onclick="cancelBroadcast({{ b.id }}, this)"
+              class="text-xs text-red-400 hover:text-red-600 px-2 py-1">
+              <i class="fas fa-times"></i>
+            </button>
+            {% endif %}
+          </div>
         </td>
       </tr>
       {% else %}
@@ -74,11 +103,12 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 </div>
 
 <!-- New Broadcast Modal -->
 <div id="new-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-  <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-[min(28rem,90vw)] p-6 max-h-[90vh] overflow-y-auto">
     <div class="flex items-center justify-between mb-5">
       <h3 class="font-semibold text-gray-800">New Broadcast</h3>
       <button onclick="document.getElementById('new-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">
@@ -88,7 +118,7 @@
     <form id="bc-form" class="space-y-4">
       <div>
         <label class="block text-xs font-medium text-gray-600 mb-1">Campaign Name *</label>
-        <input type="text" name="name" required placeholder="e.g. Festival Offer 2024"
+        <input type="text" name="name" required placeholder="e.g. April Offer 2026"
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
       </div>
       <div>
@@ -103,47 +133,159 @@
       </div>
       <div>
         <label class="block text-xs font-medium text-gray-600 mb-1">Filter by Tags (optional)</label>
-        <input type="text" name="target_tags" placeholder="vip, customer (leave blank for all)"
+        <input type="text" name="target_tags" placeholder="vip, customer (blank = all contacts)"
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
       </div>
+
+      <!-- Schedule -->
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Schedule (optional)</label>
+        <input type="datetime-local" name="scheduled_at" min="{{ now }}"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
+        <p class="text-xs text-gray-400 mt-1">Leave blank to create a draft. Set a time to auto-send.</p>
+      </div>
+
       <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-xs text-yellow-700">
         <i class="fas fa-info-circle mr-1"></i>
         Only opted-in, non-blocked contacts will receive this broadcast.
       </div>
-      <button type="button" onclick="createBroadcast()" class="w-full bg-teal-600 hover:bg-teal-700 text-white py-2.5 rounded-lg text-sm font-medium">
+      <button type="button" onclick="createBroadcast()"
+        class="w-full bg-teal-600 hover:bg-teal-700 text-white py-2.5 rounded-lg text-sm font-medium">
         Create Broadcast
       </button>
     </form>
+  </div>
+</div>
+<!-- Failures Modal -->
+<div id="failures-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-[min(32rem,90vw)] p-6 max-h-[80vh] flex flex-col">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="font-semibold text-gray-800">Failed Recipients</h3>
+      <button onclick="document.getElementById('failures-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div id="failures-list" class="flex-1 overflow-y-auto space-y-2"></div>
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+  // Live status polling — runs every 3s when any broadcast is running
+  const runningIds = new Set(
+    [...document.querySelectorAll('[data-broadcast-id]')]
+      .filter(el => el.dataset.status === 'running')
+      .map(el => el.dataset.broadcastId)
+  );
+
+  function updateRow(b) {
+    const pct = b.total_count > 0 ? Math.round(b.sent_count / b.total_count * 100) : 0;
+    const statusBadge = document.getElementById(`status-${b.id}`);
+    const progressBar = document.getElementById(`bar-${b.id}`);
+    const progressText = document.getElementById(`progress-${b.id}`);
+    const deliveredEl = document.getElementById(`delivered-${b.id}`);
+    const failedEl = document.getElementById(`failed-${b.id}`);
+
+    if (statusBadge) {
+      if (b.status === 'completed') {
+        statusBadge.className = 'text-xs bg-green-50 text-green-600 px-2 py-0.5 rounded-full';
+        statusBadge.textContent = 'Completed';
+      } else if (b.status === 'running') {
+        statusBadge.className = 'text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full animate-pulse';
+        statusBadge.textContent = 'Running';
+      }
+    }
+    if (progressBar) progressBar.style.width = pct + '%';
+    if (progressText) progressText.textContent = `${b.sent_count}/${b.total_count}`;
+    if (deliveredEl && b.delivered_count > 0) {
+      deliveredEl.textContent = b.delivered_count + ' delivered';
+      deliveredEl.classList.remove('hidden');
+    }
+    if (failedEl) {
+      if (b.failed_count > 0) {
+        failedEl.textContent = b.failed_count + ' failed';
+        failedEl.classList.remove('hidden');
+      } else {
+        failedEl.classList.add('hidden');
+      }
+    }
+
+    if (b.status === 'completed') {
+      runningIds.delete(String(b.id));
+      // Remove animate-pulse from send button row if present
+      const sendBtn = document.getElementById(`send-btn-${b.id}`);
+      if (sendBtn) sendBtn.remove();
+    }
+  }
+
+  async function pollStatus() {
+    if (runningIds.size === 0) return;
+    try {
+      const r = await fetch('/broadcasts/status');
+      if (!r.ok) return;
+      const data = await r.json();
+      data.forEach(updateRow);
+    } catch (_) {}
+    if (runningIds.size > 0) setTimeout(pollStatus, 3000);
+  }
+
+  if (runningIds.size > 0) setTimeout(pollStatus, 3000);
+
+  async function viewErrors(broadcastId) {
+    const r = await fetch(`/broadcasts/${broadcastId}/failures`);
+    const data = await r.json();
+    const list = document.getElementById('failures-list');
+    if (!data.length) {
+      list.innerHTML = '<p class="text-sm text-gray-400 py-4 text-center">No failures found.</p>';
+    } else {
+      list.innerHTML = data.map(f => `
+        <div class="bg-red-50 border border-red-100 rounded-lg p-3">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-sm font-medium text-gray-800">${f.name || f.phone}</span>
+            <span class="text-xs text-gray-400 font-mono">+${f.phone}</span>
+          </div>
+          <p class="text-xs text-red-600"><i class="fas fa-exclamation-circle mr-1"></i>${f.error}</p>
+        </div>`).join('');
+    }
+    document.getElementById('failures-modal').classList.remove('hidden');
+  }
+
   async function createBroadcast() {
     const fd = new FormData(document.getElementById('bc-form'));
     const r = await fetch('/broadcasts/create', {method: 'POST', body: fd});
     const data = await r.json();
     if (r.ok) {
-      alert(`Broadcast created with ${data.total} recipients!`);
+      document.getElementById('new-modal').classList.add('hidden');
+      const msg = data.scheduled
+        ? `Broadcast scheduled for ${new Date(data.scheduled).toLocaleString()} — ${data.total} recipients`
+        : `Broadcast created with ${data.total} recipients!`;
+      alert(msg);
       location.reload();
     } else {
-      alert(data.error);
+      alert(data.error || 'Failed to create broadcast');
     }
   }
 
   async function sendBroadcast(id, btn) {
-    if (!confirm('Send this broadcast now?')) return;
+    if (!confirm('Send this broadcast now to all recipients?')) return;
     btn.disabled = true;
-    btn.textContent = 'Sending...';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Starting...';
     const r = await fetch(`/broadcasts/${id}/send`, {method: 'POST'});
     if (r.ok) {
       location.reload();
     } else {
       btn.disabled = false;
-      btn.textContent = 'Send';
+      btn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i>Send Now';
       alert('Failed to start broadcast');
     }
+  }
+
+  async function cancelBroadcast(id, btn) {
+    if (!confirm('Cancel this broadcast?')) return;
+    const r = await fetch(`/broadcasts/${id}/cancel`, {method: 'POST'});
+    if (r.ok) location.reload();
+    else alert('Failed to cancel');
   }
 </script>
 {% endblock %}

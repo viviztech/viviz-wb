@@ -1,0 +1,162 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Quick Replies — Viviz WhatsApp{% endblock %}
+{% block page_title %}Quick Replies{% endblock %}
+
+{% block header_actions %}
+<button onclick="openCreate()"
+  class="text-xs px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg flex items-center gap-1">
+  <i class="fas fa-plus"></i> New Quick Reply
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="mb-4 bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-blue-700">
+  <i class="fas fa-bolt mr-1"></i>
+  Quick replies are pre-saved messages you can insert with one click in any conversation. Use a <strong>shortcut</strong> like <code class="bg-blue-100 px-1 rounded">/thanks</code> to filter them quickly.
+</div>
+
+<div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+  <div class="overflow-x-auto">
+  <table class="w-full text-sm min-w-[480px]">
+    <thead>
+      <tr class="bg-gray-50 text-left">
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Title</th>
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide hidden sm:table-cell">Shortcut</th>
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Message Preview</th>
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Actions</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-50">
+      {% for qr in quick_replies %}
+      <tr class="hover:bg-gray-50 transition">
+        <td class="px-5 py-3.5 font-medium text-gray-800 whitespace-nowrap">{{ qr.title }}</td>
+        <td class="px-5 py-3.5 hidden sm:table-cell">
+          {% if qr.shortcut %}
+          <code class="text-xs bg-gray-100 text-teal-700 px-2 py-0.5 rounded">/{{ qr.shortcut }}</code>
+          {% else %}
+          <span class="text-xs text-gray-400">—</span>
+          {% endif %}
+        </td>
+        <td class="px-5 py-3.5 text-gray-500 max-w-[200px] sm:max-w-xs">
+          <p class="truncate text-xs">{{ qr.message[:120] }}{% if qr.message|length > 120 %}…{% endif %}</p>
+        </td>
+        <td class="px-5 py-3.5 whitespace-nowrap">
+          <div class="flex gap-3">
+            <button onclick="openEdit({{ qr.id }}, {{ qr.title|tojson }}, {{ (qr.shortcut or '')|tojson }}, {{ qr.message|tojson }})"
+              class="text-xs text-teal-600 hover:underline">Edit</button>
+            <button onclick="deleteQR({{ qr.id }}, this)"
+              class="text-xs text-red-400 hover:text-red-600">Delete</button>
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="py-16 text-center text-gray-400">
+        <i class="fas fa-bolt text-4xl mb-3 block opacity-20"></i>
+        <p>No quick replies yet.</p>
+        <p class="text-sm mt-1">Save common replies to use them instantly in conversations.</p>
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<!-- Create / Edit Modal -->
+<div id="qr-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-[min(32rem,90vw)] p-6 max-h-[90vh] overflow-y-auto">
+    <div class="flex items-center justify-between mb-5">
+      <h3 id="modal-title" class="font-semibold text-gray-800">New Quick Reply</h3>
+      <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+    </div>
+    <form id="qr-form" class="space-y-4">
+      <input type="hidden" id="qr-id" value=""/>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Title *</label>
+        <input type="text" id="qr-title" required placeholder="e.g. Thank You Message"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Shortcut (optional)</label>
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">/</span>
+          <input type="text" id="qr-shortcut" placeholder="thanks"
+            class="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
+        </div>
+        <p class="text-xs text-gray-400 mt-1">Type /shortcut in chat to filter this reply</p>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Message *</label>
+        <textarea id="qr-message" required rows="5"
+          placeholder="Thank you for contacting Viviz Technologies! We will get back to you shortly."
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none"></textarea>
+        <p class="text-xs text-gray-400 mt-1"><span id="char-count">0</span> characters</p>
+      </div>
+      <p id="qr-error" class="text-xs text-red-500 hidden"></p>
+      <button type="button" onclick="saveQR()"
+        class="w-full bg-teal-600 hover:bg-teal-700 text-white py-2.5 rounded-lg text-sm font-medium">
+        Save Quick Reply
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById('qr-message').addEventListener('input', function() {
+    document.getElementById('char-count').textContent = this.value.length;
+  });
+
+  function openCreate() {
+    document.getElementById('modal-title').textContent = 'New Quick Reply';
+    document.getElementById('qr-id').value = '';
+    document.getElementById('qr-title').value = '';
+    document.getElementById('qr-shortcut').value = '';
+    document.getElementById('qr-message').value = '';
+    document.getElementById('char-count').textContent = '0';
+    document.getElementById('qr-error').classList.add('hidden');
+    document.getElementById('qr-modal').classList.remove('hidden');
+  }
+
+  function openEdit(id, title, shortcut, message) {
+    document.getElementById('modal-title').textContent = 'Edit Quick Reply';
+    document.getElementById('qr-id').value = id;
+    document.getElementById('qr-title').value = title;
+    document.getElementById('qr-shortcut').value = shortcut;
+    document.getElementById('qr-message').value = message;
+    document.getElementById('char-count').textContent = message.length;
+    document.getElementById('qr-error').classList.add('hidden');
+    document.getElementById('qr-modal').classList.remove('hidden');
+  }
+
+  function closeModal() {
+    document.getElementById('qr-modal').classList.add('hidden');
+  }
+
+  async function saveQR() {
+    const id = document.getElementById('qr-id').value;
+    const fd = new FormData();
+    fd.append('title', document.getElementById('qr-title').value);
+    fd.append('shortcut', document.getElementById('qr-shortcut').value);
+    fd.append('message', document.getElementById('qr-message').value);
+    const errEl = document.getElementById('qr-error');
+
+    const url = id ? `/quick-replies/${id}/update` : '/quick-replies/create';
+    const r = await fetch(url, {method: 'POST', body: fd});
+    const data = await r.json();
+    if (r.ok) {
+      closeModal();
+      location.reload();
+    } else {
+      errEl.textContent = data.error || 'Failed to save';
+      errEl.classList.remove('hidden');
+    }
+  }
+
+  async function deleteQR(id, btn) {
+    if (!confirm('Delete this quick reply?')) return;
+    const r = await fetch(`/quick-replies/${id}`, {method: 'DELETE'});
+    if (r.ok) location.reload();
+  }
+</script>
+{% endblock %}

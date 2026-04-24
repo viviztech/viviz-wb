@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chat with Viviz Technologies on WhatsApp</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css"/>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-teal-900 via-teal-800 to-green-900 flex items-center justify-center p-4">
+  <div class="w-full max-w-md">
+    <!-- Header -->
+    <div class="text-center mb-8">
+      <div class="inline-flex w-20 h-20 bg-green-400 rounded-full items-center justify-center mb-4 shadow-lg">
+        <i class="fab fa-whatsapp text-white text-4xl"></i>
+      </div>
+      <h1 class="text-2xl font-bold text-white">Chat with Us</h1>
+      <p class="text-teal-200 mt-1">Viviz Technologies · WhatsApp Business</p>
+    </div>
+
+    <!-- Card -->
+    <div class="bg-white rounded-2xl shadow-2xl p-8 text-center">
+      <!-- QR Code -->
+      <div class="mb-6">
+        <p class="text-sm text-gray-500 mb-4">Scan to open WhatsApp</p>
+        <div class="inline-block p-3 border-2 border-gray-100 rounded-2xl bg-gray-50">
+          <img src="data:image/png;base64,{{ qr_img }}" alt="WhatsApp QR Code" class="w-48 h-48 mx-auto"/>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3 my-5">
+        <div class="flex-1 h-px bg-gray-200"></div>
+        <span class="text-xs text-gray-400">or tap the button</span>
+        <div class="flex-1 h-px bg-gray-200"></div>
+      </div>
+
+      <!-- CTA Button -->
+      <a href="{{ deeplink }}" target="_blank"
+        class="flex items-center justify-center gap-3 w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-4 px-6 rounded-xl transition text-base shadow-md">
+        <i class="fab fa-whatsapp text-2xl"></i>
+        Open in WhatsApp
+      </a>
+
+      <p class="text-xs text-gray-400 mt-4">
+        Opens WhatsApp with a pre-filled message. Tap send to start the conversation.
+      </p>
+
+      <!-- Pre-filled message preview -->
+      <div class="mt-5 bg-green-50 rounded-xl p-4 text-left border border-green-100">
+        <p class="text-xs text-green-600 font-medium mb-1"><i class="fas fa-comment-alt mr-1"></i>Pre-filled message</p>
+        <p class="text-sm text-gray-700 italic">"{{ pre_message }}"</p>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <p class="text-center text-teal-300 text-xs mt-6">
+      Powered by <strong>Viviz Technologies</strong> · viviz.in
+    </p>
+  </div>
+</body>
+</html>

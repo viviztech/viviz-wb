@@ -3,38 +3,44 @@
 {% block page_title %}Contacts{% endblock %}
 
 {% block header_actions %}
-<div class="flex gap-2">
+<div class="flex flex-wrap gap-2">
   <a href="/contacts/export" class="text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 flex items-center gap-1">
-    <i class="fas fa-download"></i> Export CSV
+    <i class="fas fa-download"></i> <span class="hidden sm:inline">Export CSV</span>
   </a>
+  <button onclick="document.getElementById('import-modal').classList.remove('hidden')"
+    class="text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 flex items-center gap-1">
+    <i class="fas fa-upload"></i> <span class="hidden sm:inline">Import CSV</span>
+  </button>
   <button onclick="document.getElementById('add-modal').classList.remove('hidden')"
     class="text-xs px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg flex items-center gap-1">
-    <i class="fas fa-plus"></i> Add Contact
+    <i class="fas fa-plus"></i> <span class="hidden sm:inline">Add Contact</span>
   </button>
 </div>
 {% endblock %}
 
 {% block content %}
 <!-- Search -->
-<form method="GET" class="mb-4 flex gap-2">
-  <div class="relative flex-1 max-w-sm">
+<form method="GET" class="mb-4 flex flex-wrap gap-2">
+  <div class="relative flex-1 min-w-0">
     <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><i class="fas fa-search text-sm"></i></span>
     <input type="text" name="q" value="{{ q }}" placeholder="Search by name or phone..."
       class="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
   </div>
-  <button type="submit" class="text-xs px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700">Search</button>
-  {% if q %}<a href="/contacts" class="text-xs px-4 py-2 text-gray-400 hover:text-gray-600 flex items-center">Clear</a>{% endif %}
+  <button type="submit" class="text-xs px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 flex-shrink-0">Search</button>
+  {% if q %}<a href="/contacts" class="text-xs px-4 py-2 text-gray-400 hover:text-gray-600 flex items-center flex-shrink-0">Clear</a>{% endif %}
+  <span class="text-xs text-gray-400 flex items-center flex-shrink-0">{{ total }} contacts</span>
 </form>
 
 <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-  <table class="w-full text-sm">
+  <div class="overflow-x-auto">
+  <table class="w-full text-sm min-w-[600px]">
     <thead>
       <tr class="bg-gray-50 text-left">
         <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Contact</th>
         <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Phone</th>
-        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Tags</th>
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide hidden md:table-cell">Tags</th>
         <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Joined</th>
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide hidden sm:table-cell">Joined</th>
         <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Actions</th>
       </tr>
     </thead>
@@ -46,14 +52,14 @@
             <div class="w-8 h-8 bg-teal-100 rounded-full flex items-center justify-center flex-shrink-0">
               <span class="text-teal-700 font-semibold text-xs">{{ (c.profile_name or c.name or c.phone)[0].upper() }}</span>
             </div>
-            <div>
-              <p class="font-medium text-gray-800">{{ c.profile_name or c.name or '—' }}</p>
-              {% if c.email %}<p class="text-xs text-gray-400">{{ c.email }}</p>{% endif %}
+            <div class="min-w-0">
+              <p class="font-medium text-gray-800 truncate">{{ c.profile_name or c.name or '—' }}</p>
+              {% if c.email %}<p class="text-xs text-gray-400 truncate">{{ c.email }}</p>{% endif %}
             </div>
           </div>
         </td>
-        <td class="px-5 py-3.5 text-gray-600 font-mono text-xs">+{{ c.phone }}</td>
-        <td class="px-5 py-3.5">
+        <td class="px-5 py-3.5 text-gray-600 font-mono text-xs whitespace-nowrap">+{{ c.phone }}</td>
+        <td class="px-5 py-3.5 hidden md:table-cell">
           <div class="flex flex-wrap gap-1">
             {% for tag in (c.tags or [])[:3] %}
             <span class="text-xs bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full">{{ tag }}</span>
@@ -62,18 +68,29 @@
         </td>
         <td class="px-5 py-3.5">
           {% if c.is_blocked %}
-          <span class="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full">Blocked</span>
+          <span class="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full whitespace-nowrap">Blocked</span>
           {% elif c.is_opted_in %}
-          <span class="text-xs bg-green-50 text-green-600 px-2 py-0.5 rounded-full">Active</span>
+          <span class="text-xs bg-green-50 text-green-600 px-2 py-0.5 rounded-full whitespace-nowrap">Active</span>
           {% else %}
-          <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Opted Out</span>
+          <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full whitespace-nowrap">Opted Out</span>
           {% endif %}
         </td>
-        <td class="px-5 py-3.5 text-xs text-gray-400">{{ c.created_at.strftime('%d %b %Y') }}</td>
+        <td class="px-5 py-3.5 text-xs text-gray-400 whitespace-nowrap hidden sm:table-cell">{{ c.created_at.strftime('%d %b %Y') }}</td>
         <td class="px-5 py-3.5">
-          <div class="flex gap-2">
+          <div class="flex gap-3">
+            <button
+              class="text-xs text-teal-600 hover:underline edit-btn whitespace-nowrap"
+              data-id="{{ c.id }}"
+              data-phone="{{ c.phone }}"
+              data-name="{{ c.name or '' }}"
+              data-email="{{ c.email or '' }}"
+              data-tags="{{ (c.tags or [])|join(', ') }}"
+              data-notes="{{ c.notes or '' }}"
+              data-opted="{{ 'true' if c.is_opted_in else 'false' }}">
+              <i class="fas fa-pencil-alt mr-1"></i>Edit
+            </button>
             <button onclick="toggleBlock({{ c.id }}, this)"
-              class="text-xs {% if c.is_blocked %}text-green-600{% else %}text-red-400{% endif %} hover:underline">
+              class="text-xs {% if c.is_blocked %}text-green-600{% else %}text-red-400{% endif %} hover:underline whitespace-nowrap">
               {{ 'Unblock' if c.is_blocked else 'Block' }}
             </button>
           </div>
@@ -87,11 +104,121 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="mt-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+  <span class="text-xs text-gray-400">Page {{ current_page }} of {{ total_pages }}</span>
+  <div class="flex gap-1">
+    {% if current_page > 1 %}
+    <a href="/contacts?page={{ current_page - 1 }}{% if q %}&q={{ q }}{% endif %}"
+      class="text-xs px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600">
+      <i class="fas fa-chevron-left mr-1"></i>Prev
+    </a>
+    {% endif %}
+    {% if current_page < total_pages %}
+    <a href="/contacts?page={{ current_page + 1 }}{% if q %}&q={{ q }}{% endif %}"
+      class="text-xs px-3 py-1.5 bg-teal-600 hover:bg-teal-700 rounded-lg text-white">
+      Next<i class="fas fa-chevron-right ml-1"></i>
+    </a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Import CSV Modal -->
+<div id="import-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-[min(28rem,90vw)] p-6">
+    <div class="flex items-center justify-between mb-5">
+      <h3 class="font-semibold text-gray-800">Import Contacts from CSV</h3>
+      <button onclick="document.getElementById('import-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div class="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-4 text-xs text-blue-700 space-y-1">
+      <p class="font-medium">CSV Format:</p>
+      <p>Required column: <code class="bg-blue-100 px-1 rounded">phone</code></p>
+      <p>Optional: <code class="bg-blue-100 px-1 rounded">name</code>, <code class="bg-blue-100 px-1 rounded">email</code>, <code class="bg-blue-100 px-1 rounded">tags</code> (semicolon-separated), <code class="bg-blue-100 px-1 rounded">notes</code></p>
+      <p>Example: <code class="bg-blue-100 px-1 rounded">919876543210,John,john@co.in,vip;customer,VIP client</code></p>
+    </div>
+    <form id="import-form" class="space-y-4">
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">CSV File *</label>
+        <input type="file" name="file" accept=".csv" required id="import-file"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
+      </div>
+      <p id="import-result" class="text-xs hidden"></p>
+      <button type="button" onclick="importContacts()"
+        class="w-full bg-teal-600 hover:bg-teal-700 text-white py-2.5 rounded-lg text-sm font-medium flex items-center justify-center gap-2">
+        <i class="fas fa-upload"></i> Import
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- Edit Contact Modal -->
+<div id="edit-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-[min(28rem,90vw)] p-6 max-h-[90vh] overflow-y-auto">
+    <div class="flex items-center justify-between mb-5">
+      <h3 class="font-semibold text-gray-800">Edit Contact</h3>
+      <button onclick="document.getElementById('edit-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <form id="edit-form" class="space-y-4">
+      <input type="hidden" id="edit-id"/>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Phone Number</label>
+        <div class="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50">
+          <i class="fas fa-phone text-gray-400 text-xs"></i>
+          <span id="edit-phone" class="text-sm text-gray-500 font-mono"></span>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Name</label>
+        <input type="text" id="edit-name" name="name" placeholder="Full Name"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Email</label>
+        <input type="email" id="edit-email" name="email" placeholder="email@example.com"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Tags (comma separated)</label>
+        <input type="text" id="edit-tags" name="tags" placeholder="customer, vip, lead"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+        <textarea id="edit-notes" name="notes" rows="2" placeholder="Internal notes..."
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none"></textarea>
+      </div>
+      <div class="flex items-center gap-3">
+        <input type="checkbox" id="edit-opted-in" name="is_opted_in" value="true"
+          class="h-4 w-4 text-teal-600 rounded border-gray-300 focus:ring-teal-500"/>
+        <label for="edit-opted-in" class="text-sm text-gray-700 cursor-pointer">Opted in to receive messages</label>
+      </div>
+      <p id="edit-error" class="text-xs text-red-500 hidden"></p>
+      <div class="flex gap-2">
+        <button type="button" onclick="document.getElementById('edit-modal').classList.add('hidden')"
+          class="flex-1 border border-gray-200 text-gray-600 py-2.5 rounded-lg text-sm hover:bg-gray-50">
+          Cancel
+        </button>
+        <button type="button" onclick="saveEdit()"
+          class="flex-1 bg-teal-600 hover:bg-teal-700 text-white py-2.5 rounded-lg text-sm font-medium">
+          Save Changes
+        </button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <!-- Add Contact Modal -->
 <div id="add-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-  <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-[min(28rem,90vw)] p-6 max-h-[90vh] overflow-y-auto">
     <div class="flex items-center justify-between mb-5">
       <h3 class="font-semibold text-gray-800">Add New Contact</h3>
       <button onclick="document.getElementById('add-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">
@@ -152,6 +279,62 @@
   async function toggleBlock(id, btn) {
     const r = await fetch(`/contacts/${id}/block`, {method: 'POST'});
     if (r.ok) location.reload();
+  }
+
+  document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.edit-btn');
+    if (!btn) return;
+    document.getElementById('edit-id').value = btn.dataset.id;
+    document.getElementById('edit-phone').textContent = '+' + btn.dataset.phone;
+    document.getElementById('edit-name').value = btn.dataset.name;
+    document.getElementById('edit-email').value = btn.dataset.email;
+    document.getElementById('edit-tags').value = btn.dataset.tags;
+    document.getElementById('edit-notes').value = btn.dataset.notes;
+    document.getElementById('edit-opted-in').checked = btn.dataset.opted === 'true';
+    document.getElementById('edit-error').classList.add('hidden');
+    document.getElementById('edit-modal').classList.remove('hidden');
+  });
+
+  async function saveEdit() {
+    const id = document.getElementById('edit-id').value;
+    const fd = new FormData();
+    fd.append('name', document.getElementById('edit-name').value);
+    fd.append('email', document.getElementById('edit-email').value);
+    fd.append('tags', document.getElementById('edit-tags').value);
+    fd.append('notes', document.getElementById('edit-notes').value);
+    fd.append('is_opted_in', document.getElementById('edit-opted-in').checked);
+    const errEl = document.getElementById('edit-error');
+
+    const r = await fetch(`/contacts/${id}/update`, {method: 'POST', body: fd});
+    const data = await r.json();
+    if (r.ok) {
+      document.getElementById('edit-modal').classList.add('hidden');
+      location.reload();
+    } else {
+      errEl.textContent = data.error || 'Failed to save';
+      errEl.classList.remove('hidden');
+    }
+  }
+
+  async function importContacts() {
+    const fileInput = document.getElementById('import-file');
+    const resultEl = document.getElementById('import-result');
+    if (!fileInput.files.length) { alert('Please select a CSV file'); return; }
+
+    const fd = new FormData();
+    fd.append('file', fileInput.files[0]);
+
+    const r = await fetch('/contacts/import', {method: 'POST', body: fd});
+    const data = await r.json();
+    resultEl.classList.remove('hidden');
+    if (r.ok) {
+      resultEl.className = 'text-xs text-green-700 bg-green-50 rounded p-2';
+      resultEl.textContent = `Done! Added: ${data.added}, Skipped (duplicates): ${data.skipped}${data.errors.length ? ' | Errors: ' + data.errors.join('; ') : ''}`;
+      setTimeout(() => location.reload(), 2000);
+    } else {
+      resultEl.className = 'text-xs text-red-600';
+      resultEl.textContent = data.error || 'Import failed';
+    }
   }
 </script>
 {% endblock %}

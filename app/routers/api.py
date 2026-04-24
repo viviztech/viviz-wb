@@ -27,7 +27,7 @@ class SendTemplateRequest(BaseModel):
 
 
 def verify_api_key(x_api_key: str = Header(...)):
-    if x_api_key != settings.secret_key:
+    if not settings.api_key or x_api_key != settings.api_key:
         raise HTTPException(401, "Invalid API key")
     return x_api_key
 

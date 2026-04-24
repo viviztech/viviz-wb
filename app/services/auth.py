@@ -1,22 +1,35 @@
 import hashlib
 import hmac
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
-from fastapi import Request, HTTPException, status
+
+import bcrypt
+from fastapi import Request, HTTPException
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+
 from app.models.admin import Admin
 from app.config import settings
 
 
 def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12)).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return hmac.compare_digest(hash_password(plain), hashed)
+    # Support migration: old hashes are 64-char hex (SHA256), new are bcrypt ($2b$...)
+    if hashed.startswith("$2b$") or hashed.startswith("$2a$"):
+        return bcrypt.checkpw(plain.encode(), hashed.encode())
+    # Legacy SHA256 — verify then re-hash with bcrypt on next save
+    return hmac.compare_digest(
+        hashlib.sha256(plain.encode()).hexdigest(), hashed
+    )
+
+
+def is_legacy_hash(hashed: str) -> bool:
+    return not (hashed.startswith("$2b$") or hashed.startswith("$2a$"))
 
 
 def create_session_token() -> str:
@@ -26,10 +39,13 @@ def create_session_token() -> str:
 async def authenticate_admin(email: str, password: str, db: AsyncSession) -> Optional[Admin]:
     result = await db.execute(select(Admin).where(Admin.email == email, Admin.is_active == True))
     admin = result.scalar_one_or_none()
-    if admin and verify_password(password, admin.password_hash):
-        admin.last_login = datetime.utcnow()
-        return admin
-    return None
+    if not admin or not verify_password(password, admin.password_hash):
+        return None
+    # Silently upgrade legacy SHA256 hash to bcrypt on successful login
+    if is_legacy_hash(admin.password_hash):
+        admin.password_hash = hash_password(password)
+    admin.last_login = datetime.utcnow()
+    return admin
 
 
 def get_session(request: Request) -> Optional[str]:
@@ -49,6 +65,7 @@ async def ensure_admin_exists(db: AsyncSession):
             email=settings.admin_email,
             password_hash=hash_password(settings.admin_password),
             name="Viviz Admin",
+            must_change_password=True,
         )
         db.add(admin)
         await db.commit()

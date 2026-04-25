@@ -188,7 +188,6 @@ class WhatsAppService:
     async def create_template(self, name: str, language: str, category: str, components: list) -> dict:
         url = f"{settings.whatsapp_api_url}/{settings.whatsapp_business_account_id}/message_templates"
         return await self._post(url, {
-            "messaging_product": "whatsapp",
             "name": name,
             "language": language,
             "category": category,

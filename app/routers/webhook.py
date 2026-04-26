@@ -40,7 +40,7 @@ async def receive_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         await handle_webhook_payload(payload, db)
         return {"status": "ok"}
     except Exception as ex:
-        logger.error(f"Webhook error: {ex}")
+        logger.exception(f"Webhook processing error: {ex}")
         return {"status": "ok"}
 
 

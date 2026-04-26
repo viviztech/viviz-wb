@@ -215,24 +215,36 @@ async def _handle_status_update(status: dict, db: AsyncSession):
     recipient = recipient_result.scalar_one_or_none()
     if recipient:
         now = datetime.utcnow()
+        from app.models.broadcast import Broadcast
+        from sqlalchemy import update
         if new_status == "delivered" and not recipient.delivered_at:
             recipient.delivered_at = now
-            from app.models.broadcast import Broadcast
-            from sqlalchemy import update
+            recipient.status = "delivered"
             await db.execute(
                 update(Broadcast)
                 .where(Broadcast.id == recipient.broadcast_id)
                 .values(delivered_count=Broadcast.delivered_count + 1)
             )
+            logger.info(f"Broadcast recipient {wa_message_id} marked delivered")
         elif new_status == "read" and not recipient.read_at:
             recipient.read_at = now
-            from app.models.broadcast import Broadcast
-            from sqlalchemy import update
+            recipient.status = "read"
             await db.execute(
                 update(Broadcast)
                 .where(Broadcast.id == recipient.broadcast_id)
                 .values(read_count=Broadcast.read_count + 1)
             )
+            logger.info(f"Broadcast recipient {wa_message_id} marked read")
+        elif new_status == "failed" and recipient.status not in ("delivered", "read"):
+            recipient.status = "failed"
+            errors = status.get("errors", [])
+            recipient.error_message = (errors[0].get("message") if errors else "Unknown error")[:500]
+            await db.execute(
+                update(Broadcast)
+                .where(Broadcast.id == recipient.broadcast_id)
+                .values(failed_count=Broadcast.failed_count + 1)
+            )
+            logger.info(f"Broadcast recipient {wa_message_id} marked failed")
 
     db.add(WebhookLog(
         event_type=f"status_{new_status}",

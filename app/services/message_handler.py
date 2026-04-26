@@ -17,12 +17,45 @@ async def handle_webhook_payload(payload: dict, db: AsyncSession):
         entry = payload.get("entry", [])
         for e in entry:
             for change in e.get("changes", []):
+                field = change.get("field", "")
                 value = change.get("value", {})
-                await _process_value(value, db)
+
+                if field == "marketing_messages":
+                    await _process_marketing_messages_field(value, db)
+                else:
+                    await _process_value(value, db)
     except Exception as ex:
         logger.error(f"Webhook processing error: {ex}")
         log = WebhookLog(payload=payload, processed="error", error=str(ex))
         db.add(log)
+
+
+async def _process_marketing_messages_field(value: dict, db: AsyncSession):
+    """
+    Handle events delivered under the `marketing_messages` webhook field.
+    Covers:
+    - tos_signed: business accepted MM Lite Terms of Service
+    - message_deliveries / message_reads: MM Lite delivery metrics
+    - message_errors: MM Lite send failures
+    """
+    event_type = value.get("event")
+
+    if event_type == "tos_signed":
+        from app.routers.mm_lite import handle_tos_signed_event
+        await handle_tos_signed_event(value, db)
+        db.add(WebhookLog(event_type="mm_lite_tos_signed", payload=value))
+        logger.info("MM Lite ToS signed event processed")
+        return
+
+    # Delivery / read / error metrics from MM Lite
+    if event_type in ("message_deliveries", "message_reads", "message_errors"):
+        db.add(WebhookLog(event_type=f"mm_lite_{event_type}", payload=value))
+        logger.debug(f"MM Lite event logged: {event_type}")
+        return
+
+    # Fallback: log unknown marketing_messages events
+    db.add(WebhookLog(event_type="mm_lite_unknown", payload=value))
+    logger.debug(f"Unknown marketing_messages event: {event_type}")
 
 
 async def _process_value(value: dict, db: AsyncSession):
@@ -111,9 +144,11 @@ async def _handle_incoming_message(msg: dict, contact_map: dict, db: AsyncSessio
     except Exception as ex:
         logger.warning(f"Could not mark read: {ex}")
 
-    # Auto-reply rules
+    # Opt-out / unsubscribe handling — must run before auto-replies
     if content and msg_type == "text":
-        await _check_auto_reply(content, from_phone, conversation.id, db)
+        opted_out = await _check_optout(content, contact, from_phone, db)
+        if not opted_out:
+            await _check_auto_reply(content, from_phone, conversation.id, db)
 
     # Log webhook
     db.add(WebhookLog(
@@ -182,7 +217,6 @@ async def _handle_status_update(status: dict, db: AsyncSession):
         now = datetime.utcnow()
         if new_status == "delivered" and not recipient.delivered_at:
             recipient.delivered_at = now
-            # bump broadcast delivered_count
             from app.models.broadcast import Broadcast
             from sqlalchemy import update
             await db.execute(
@@ -192,12 +226,62 @@ async def _handle_status_update(status: dict, db: AsyncSession):
             )
         elif new_status == "read" and not recipient.read_at:
             recipient.read_at = now
+            from app.models.broadcast import Broadcast
+            from sqlalchemy import update
+            await db.execute(
+                update(Broadcast)
+                .where(Broadcast.id == recipient.broadcast_id)
+                .values(read_count=Broadcast.read_count + 1)
+            )
 
     db.add(WebhookLog(
         event_type=f"status_{new_status}",
         wa_message_id=wa_message_id,
         payload=status,
     ))
+
+
+_OPT_OUT_KEYWORDS = {"stop", "unsubscribe", "optout", "opt out", "opt-out", "cancel", "remove me", "no more"}
+_OPT_IN_KEYWORDS = {"start", "subscribe", "optin", "opt in", "opt-in", "yes"}
+
+
+async def _check_optout(text: str, contact: Contact, to_phone: str, db: AsyncSession) -> bool:
+    """
+    Handle STOP / UNSUBSCRIBE keywords to opt contacts out.
+    Handle START / SUBSCRIBE to re-opt them in.
+    Returns True if the message was an opt-out/in command (suppresses auto-reply).
+    """
+    lower = text.strip().lower()
+
+    if lower in _OPT_OUT_KEYWORDS:
+        if contact.is_opted_in:
+            contact.is_opted_in = False
+            logger.info(f"Contact {to_phone} opted out via keyword: {text!r}")
+            try:
+                await whatsapp.send_text(
+                    to_phone,
+                    "You have been unsubscribed from our messages. "
+                    "Reply START anytime to subscribe again.",
+                )
+            except Exception as ex:
+                logger.warning(f"Could not send opt-out confirmation to {to_phone}: {ex}")
+        return True
+
+    if lower in _OPT_IN_KEYWORDS:
+        if not contact.is_opted_in:
+            contact.is_opted_in = True
+            logger.info(f"Contact {to_phone} opted in via keyword: {text!r}")
+            try:
+                await whatsapp.send_text(
+                    to_phone,
+                    "You have been subscribed to our messages. "
+                    "Reply STOP anytime to unsubscribe.",
+                )
+            except Exception as ex:
+                logger.warning(f"Could not send opt-in confirmation to {to_phone}: {ex}")
+        return True
+
+    return False
 
 
 async def _check_auto_reply(text: str, to_phone: str, conversation_id: int, db: AsyncSession):

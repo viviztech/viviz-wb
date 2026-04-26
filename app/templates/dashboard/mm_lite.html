@@ -1,0 +1,251 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}MM Lite — Viviz WhatsApp Business{% endblock %}
+{% block page_title %}Marketing Messages Lite (MM Lite){% endblock %}
+
+{% block content %}
+<div class="p-4 md:p-6 space-y-6">
+
+  {# ── Flash messages ── #}
+  {% if request.query_params.get("signup") == "complete" %}
+  <div class="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl p-4">
+    <i class="fas fa-info-circle text-blue-500 mt-0.5"></i>
+    <div>
+      <p class="text-sm font-semibold text-blue-800">Signup submitted</p>
+      <p class="text-xs text-blue-700 mt-0.5">
+        Meta will send a <code>tos_signed</code> webhook once your Terms of Service acceptance is confirmed.
+        This page will update automatically — refresh in a few minutes.
+      </p>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if request.query_params.get("error") == "signup_cancelled" %}
+  <div class="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4">
+    <i class="fas fa-times-circle text-red-500 mt-0.5"></i>
+    <p class="text-sm text-red-800">The signup flow was cancelled. You can try again below.</p>
+  </div>
+  {% endif %}
+
+  {# ── Status card ── #}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+    <div class="flex items-center justify-between flex-wrap gap-4">
+      <div>
+        <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+          <i class="fas fa-rocket text-indigo-500"></i>
+          MM Lite Status
+        </h2>
+        <p class="text-xs text-gray-500 mt-0.5">WABA: <code class="bg-gray-100 px-1 rounded">{{ waba_id or "Not configured" }}</code></p>
+      </div>
+
+      {# Status badge #}
+      {% set eff_status = meta_status or (record.status if record else "not_started") %}
+      {% if eff_status == "ACTIVE" or eff_status == "active" %}
+      <span class="inline-flex items-center gap-2 bg-green-100 text-green-800 text-sm font-semibold px-4 py-2 rounded-full">
+        <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Active
+      </span>
+      {% elif eff_status == "pending" %}
+      <span class="inline-flex items-center gap-2 bg-yellow-100 text-yellow-800 text-sm font-semibold px-4 py-2 rounded-full">
+        <span class="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></span> Pending ToS
+      </span>
+      {% else %}
+      <span class="inline-flex items-center gap-2 bg-gray-100 text-gray-600 text-sm font-semibold px-4 py-2 rounded-full">
+        <span class="w-2 h-2 bg-gray-400 rounded-full"></span> Not started
+      </span>
+      {% endif %}
+    </div>
+
+    {% if record and record.tos_accepted_at %}
+    <div class="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 md:grid-cols-3 gap-4 text-xs text-gray-600">
+      <div>
+        <p class="font-medium text-gray-400 uppercase tracking-wide">ToS Accepted</p>
+        <p class="mt-1 font-semibold text-gray-800">{{ record.tos_accepted_at.strftime("%d %b %Y %H:%M") }} UTC</p>
+      </div>
+      <div>
+        <p class="font-medium text-gray-400 uppercase tracking-wide">DB Status</p>
+        <p class="mt-1 font-semibold text-gray-800 capitalize">{{ record.status }}</p>
+      </div>
+      {% if meta_status %}
+      <div>
+        <p class="font-medium text-gray-400 uppercase tracking-wide">Meta Status</p>
+        <p class="mt-1 font-semibold text-gray-800">{{ meta_status }}</p>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {# ── Two-column layout ── #}
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    {# ── Onboarding card ── #}
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
+      <h3 class="font-bold text-gray-900 flex items-center gap-2">
+        <i class="fas fa-user-check text-indigo-500"></i>
+        Self-Onboarding
+      </h3>
+
+      <ol class="space-y-4">
+        <li class="flex gap-3">
+          <div class="flex-shrink-0 w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center">1</div>
+          <div>
+            <p class="text-sm font-medium text-gray-800">Prerequisites</p>
+            <p class="text-xs text-gray-500 mt-0.5">Your WABA must be on Cloud API, active, and not restricted. Ensure <code>meta_app_id</code> is set in your environment.</p>
+          </div>
+        </li>
+        <li class="flex gap-3">
+          <div class="flex-shrink-0 w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center">2</div>
+          <div>
+            <p class="text-sm font-medium text-gray-800">Accept Terms of Service</p>
+            <p class="text-xs text-gray-500 mt-0.5">Click the button below. A Facebook Business Manager window will open. Complete the MM Lite ToS acceptance flow there.</p>
+          </div>
+        </li>
+        <li class="flex gap-3">
+          <div class="flex-shrink-0 w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center">3</div>
+          <div>
+            <p class="text-sm font-medium text-gray-800">Webhook subscription</p>
+            <p class="text-xs text-gray-500 mt-0.5">After ToS is accepted, we automatically subscribe to the <code>marketing_messages</code> webhook field. You can also do it manually below.</p>
+          </div>
+        </li>
+        <li class="flex gap-3">
+          <div class="flex-shrink-0 w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center">4</div>
+          <div>
+            <p class="text-sm font-medium text-gray-800">Done — broadcasts auto-route</p>
+            <p class="text-xs text-gray-500 mt-0.5">All new broadcasts using a <strong>MARKETING</strong> template will automatically use MM Lite delivery for higher reach.</p>
+          </div>
+        </li>
+      </ol>
+
+      <div class="flex flex-wrap gap-3 pt-2">
+        {% if not waba_id %}
+        <div class="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <i class="fas fa-exclamation-triangle"></i>
+          <span>WABA ID not configured in <code>.env</code> — onboarding unavailable</span>
+        </div>
+        {% else %}
+        <a href="{{ onboard_url }}"
+          class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition">
+          <i class="fas fa-external-link-alt text-xs"></i>
+          Accept MM Lite Terms of Service
+        </a>
+        {% endif %}
+
+        <button onclick="subscribeWebhook()"
+          class="inline-flex items-center gap-2 border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium px-4 py-2.5 rounded-xl transition">
+          <i class="fas fa-bell text-xs"></i>
+          Subscribe Webhook
+        </button>
+
+        <button onclick="refreshStatus()"
+          class="inline-flex items-center gap-2 border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium px-4 py-2.5 rounded-xl transition">
+          <i class="fas fa-sync-alt text-xs"></i>
+          Refresh Status
+        </button>
+      </div>
+
+      <div id="action-msg" class="hidden text-xs rounded-lg px-3 py-2"></div>
+    </div>
+
+    {# ── What is MM Lite card ── #}
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
+      <h3 class="font-bold text-gray-900 flex items-center gap-2">
+        <i class="fas fa-info-circle text-blue-500"></i>
+        What is MM Lite?
+      </h3>
+      <p class="text-sm text-gray-600">
+        <strong>Marketing Messages Lite (MM Lite)</strong> is Meta's optimized delivery channel for WhatsApp marketing messages.
+        It provides higher delivery rates, advanced conversion metrics, and TTL support — with zero changes to your existing templates or credentials.
+      </p>
+
+      <div class="space-y-3">
+        {% set features = [
+          ("fa-chart-line", "Up to 9% higher delivery rates", "Meta's backend optimizations route messages through the best delivery path."),
+          ("fa-clock", "Message TTL (12h – 30d)", "Undelivered messages expire after a configurable window instead of Meta's default."),
+          ("fa-eye", "Conversion metrics", "Track web/app conversions, ROI, and engagement directly from Meta's platform."),
+          ("fa-copy", "Same templates & credentials", "No new templates, phone numbers, or WABAs required — works with existing setup."),
+          ("fa-cogs", "Auto-routing", "Once active, all MARKETING template broadcasts automatically use MM Lite."),
+        ] %}
+        {% for icon, title, desc in features %}
+        <div class="flex gap-3">
+          <div class="flex-shrink-0 w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
+            <i class="fas {{ icon }} text-blue-500 text-xs"></i>
+          </div>
+          <div>
+            <p class="text-sm font-medium text-gray-800">{{ title }}</p>
+            <p class="text-xs text-gray-500">{{ desc }}</p>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  {# ── Webhook field subscription info ── #}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+    <h3 class="font-bold text-gray-900 mb-4 flex items-center gap-2">
+      <i class="fas fa-plug text-green-500"></i>
+      Required Webhook Fields
+    </h3>
+    <p class="text-xs text-gray-500 mb-4">
+      Subscribe your Meta app to these fields on the WABA to receive MM Lite delivery and conversion events.
+      Use the <strong>Subscribe Webhook</strong> button above or configure them in your
+      <a href="https://developers.facebook.com/apps/" target="_blank" class="text-indigo-600 underline">Meta App Dashboard</a>
+      under WhatsApp &rarr; Configuration.
+    </p>
+    <div class="flex flex-wrap gap-2">
+      {% for field in ["messages", "marketing_messages"] %}
+      <span class="inline-flex items-center gap-1.5 bg-gray-100 text-gray-700 text-xs font-mono px-3 py-1.5 rounded-lg">
+        <i class="fas fa-check-circle text-green-500 text-xs"></i>
+        {{ field }}
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+
+<script>
+async function subscribeWebhook() {
+  const msg = document.getElementById("action-msg");
+  msg.className = "text-xs rounded-lg px-3 py-2 bg-blue-50 text-blue-800";
+  msg.textContent = "Subscribing…";
+  msg.classList.remove("hidden");
+  try {
+    const r = await fetch("/mm-lite/subscribe-webhook", { method: "POST" });
+    const data = await r.json();
+    if (r.ok) {
+      msg.className = "text-xs rounded-lg px-3 py-2 bg-green-50 text-green-800";
+      msg.textContent = "Webhook subscribed successfully.";
+    } else {
+      msg.className = "text-xs rounded-lg px-3 py-2 bg-red-50 text-red-800";
+      msg.textContent = "Error: " + (data.error || "Unknown error");
+    }
+  } catch(e) {
+    msg.className = "text-xs rounded-lg px-3 py-2 bg-red-50 text-red-800";
+    msg.textContent = "Request failed: " + e.message;
+  }
+}
+
+async function refreshStatus() {
+  const msg = document.getElementById("action-msg");
+  msg.className = "text-xs rounded-lg px-3 py-2 bg-blue-50 text-blue-800";
+  msg.textContent = "Checking status…";
+  msg.classList.remove("hidden");
+  try {
+    const r = await fetch("/mm-lite/status");
+    const data = await r.json();
+    const status = data.meta_status || data.db_status || "unknown";
+    if (status === "ACTIVE" || status === "active") {
+      msg.className = "text-xs rounded-lg px-3 py-2 bg-green-50 text-green-800";
+      msg.textContent = "MM Lite is ACTIVE. Reload page to update the UI.";
+    } else {
+      msg.className = "text-xs rounded-lg px-3 py-2 bg-yellow-50 text-yellow-800";
+      msg.textContent = "Status: " + status + (data.tos_accepted_at ? " | ToS at: " + data.tos_accepted_at : "");
+    }
+  } catch(e) {
+    msg.className = "text-xs rounded-lg px-3 py-2 bg-red-50 text-red-800";
+    msg.textContent = "Request failed: " + e.message;
+  }
+}
+</script>
+{% endblock %}

@@ -13,7 +13,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.config import settings
 from app.database import init_db, AsyncSessionLocal
 from app.services.auth import ensure_admin_exists
-from app.routers import webhook, auth, dashboard, conversations, contacts, broadcasts, templates, api, quick_replies, analytics, auto_replies, optin
+from app.routers import webhook, auth, dashboard, conversations, contacts, broadcasts, templates, api, quick_replies, analytics, auto_replies, optin, mm_lite
 import app.models  # ensure all models imported for init_db
 from app.scheduler import start_scheduler, stop_scheduler
 from app.logging_config import configure_logging, RequestIDMiddleware
@@ -88,6 +88,7 @@ app.include_router(quick_replies.router)
 app.include_router(analytics.router)
 app.include_router(auto_replies.router)
 app.include_router(optin.router)
+app.include_router(mm_lite.router)
 
 
 @app.exception_handler(404)

@@ -1,28 +1,56 @@
 {% extends "dashboard/base.html" %}
-{% block title %}Broadcasts — Viviz WhatsApp{% endblock %}
-{% block page_title %}Broadcasts{% endblock %}
+{% block title %}Bulk Campaigns — Viviz WhatsApp{% endblock %}
+{% block page_title %}Bulk Campaigns{% endblock %}
 
 {% block header_actions %}
-<button onclick="document.getElementById('new-modal').classList.remove('hidden')"
+<button onclick="openNewModal()"
   class="text-xs px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg flex items-center gap-1">
-  <i class="fas fa-plus"></i> New Broadcast
+  <i class="fas fa-plus"></i> New Campaign
 </button>
 {% endblock %}
 
 {% block content %}
+
+<!-- Stats Bar -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+    <p class="text-xs text-gray-400 mb-1">Total Campaigns</p>
+    <p class="text-2xl font-bold text-gray-800">{{ stats.total }}</p>
+  </div>
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+    <p class="text-xs text-gray-400 mb-1">Messages Sent</p>
+    <p class="text-2xl font-bold text-blue-600">{{ stats.sent }}</p>
+  </div>
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+    <p class="text-xs text-gray-400 mb-1">Delivered</p>
+    <p class="text-2xl font-bold text-teal-600">{{ stats.delivered }}</p>
+    {% if stats.sent > 0 %}
+    <p class="text-xs text-gray-400">{{ ((stats.delivered / stats.sent) * 100) | round(1) }}% rate</p>
+    {% endif %}
+  </div>
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+    <p class="text-xs text-gray-400 mb-1">Read</p>
+    <p class="text-2xl font-bold text-purple-600">{{ stats.read }}</p>
+    {% if stats.delivered > 0 %}
+    <p class="text-xs text-gray-400">{{ ((stats.read / stats.delivered) * 100) | round(1) }}% read rate</p>
+    {% endif %}
+  </div>
+</div>
+
 {% if not templates %}
 <div class="mb-4 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-xl text-sm flex items-center gap-2">
   <i class="fas fa-exclamation-triangle"></i>
-  No approved templates found. <a href="/templates" class="underline font-medium ml-1">Sync Templates</a>
+  No approved templates. <a href="/templates" class="underline font-medium ml-1">Sync Templates first</a>
 </div>
 {% endif %}
 
+<!-- Campaigns Table -->
 <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
   <div class="overflow-x-auto">
-  <table class="w-full text-sm min-w-[640px]">
+  <table class="w-full text-sm min-w-[700px]">
     <thead>
       <tr class="bg-gray-50 text-left">
-        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Name</th>
+        <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Campaign</th>
         <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide hidden md:table-cell">Template</th>
         <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Recipients</th>
         <th class="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
@@ -33,10 +61,19 @@
     </thead>
     <tbody class="divide-y divide-gray-50">
       {% for b in broadcasts %}
-      <tr class="hover:bg-gray-50 transition" data-broadcast-id="{{ b.id }}" data-status="{{ b.status }}">
-        <td class="px-5 py-3.5 font-medium text-gray-800 whitespace-nowrap">{{ b.name }}</td>
+      <tr class="hover:bg-gray-50 transition" id="row-{{ b.id }}" data-broadcast-id="{{ b.id }}" data-status="{{ b.status }}">
+        <td class="px-5 py-3.5">
+          <p class="font-medium text-gray-800 whitespace-nowrap">{{ b.name }}</p>
+          {% if b.target_mode and b.target_mode != 'all' %}
+          <p class="text-xs text-gray-400 mt-0.5">
+            {% if b.target_mode == 'tags' %}<i class="fas fa-tag mr-1"></i>Tags: {{ (b.target_tags or []) | join(', ') }}
+            {% elif b.target_mode == 'segment' %}<i class="fas fa-filter mr-1"></i>Segment filter
+            {% endif %}
+          </p>
+          {% endif %}
+        </td>
         <td class="px-5 py-3.5 text-gray-500 font-mono text-xs hidden md:table-cell">{{ b.template_name }}</td>
-        <td class="px-5 py-3.5 text-gray-600">{{ b.total_count }}</td>
+        <td class="px-5 py-3.5 text-gray-600" id="total-{{ b.id }}">{{ b.total_count }}</td>
         <td class="px-5 py-3.5 whitespace-nowrap">
           {% if b.status == 'completed' %}
           <span id="status-{{ b.id }}" class="text-xs bg-green-50 text-green-600 px-2 py-0.5 rounded-full">Completed</span>
@@ -52,22 +89,28 @@
           <span id="status-{{ b.id }}" class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Draft</span>
           {% endif %}
         </td>
-        <td class="px-5 py-3.5 hidden sm:table-cell">
+        <td class="px-5 py-3.5 hidden sm:table-cell min-w-[180px]">
           {% if b.total_count > 0 %}
           <div class="space-y-1">
             <div class="flex items-center gap-2">
-              <div class="flex-1 h-1.5 bg-gray-100 rounded-full w-20">
-                <div id="bar-{{ b.id }}" class="h-1.5 bg-teal-500 rounded-full" style="width: {{ ((b.sent_count or 0) / b.total_count * 100)|int }}%"></div>
+              <div class="flex-1 h-1.5 bg-gray-100 rounded-full w-24">
+                <div id="bar-{{ b.id }}" class="h-1.5 bg-teal-500 rounded-full transition-all"
+                  style="width: {{ [((b.sent_count or 0) / b.total_count * 100)|int, 100]|min }}%"></div>
               </div>
-              <span id="progress-{{ b.id }}" class="text-xs text-gray-400">{{ b.sent_count or 0 }}/{{ b.total_count }}</span>
+              <span id="progress-{{ b.id }}" class="text-xs text-gray-400 whitespace-nowrap">{{ b.sent_count or 0 }}/{{ b.total_count }}</span>
             </div>
-            <div id="delivered-{{ b.id }}" class="text-xs text-gray-400 {% if not b.delivered_count %}hidden{% endif %}">
-              <i class="fas fa-check-double text-teal-400 mr-1"></i>{{ b.delivered_count or 0 }} delivered
+            <div class="flex gap-3 text-xs text-gray-400">
+              <span id="delivered-{{ b.id }}" class="{{ 'hidden' if not b.delivered_count }}">
+                <i class="fas fa-check-double text-teal-400"></i> <span class="delivered-val">{{ b.delivered_count or 0 }}</span>
+              </span>
+              <span id="read-{{ b.id }}" class="{{ 'hidden' if not b.read_count }}">
+                <i class="fas fa-eye text-purple-400"></i> <span class="read-val">{{ b.read_count or 0 }}</span>
+              </span>
+              <button id="failed-{{ b.id }}" onclick="viewErrors({{ b.id }})"
+                class="text-red-500 hover:underline {{ 'hidden' if not b.failed_count }}">
+                <i class="fas fa-exclamation-circle"></i> <span class="failed-val">{{ b.failed_count or 0 }}</span> failed
+              </button>
             </div>
-            <button id="failed-{{ b.id }}" onclick="viewErrors({{ b.id }})"
-              class="text-xs text-red-500 hover:underline {% if not b.failed_count %}hidden{% endif %}">
-              <i class="fas fa-exclamation-circle mr-1"></i>{{ b.failed_count or 0 }} failed
-            </button>
           </div>
           {% else %}<span class="text-xs text-gray-400">—</span>{% endif %}
         </td>
@@ -79,17 +122,33 @@
           {% endif %}
         </td>
         <td class="px-5 py-3.5">
-          <div class="flex gap-2">
+          <div class="flex gap-1.5 flex-wrap">
             {% if b.status == 'draft' %}
             <button onclick="sendBroadcast({{ b.id }}, this)"
-              class="text-xs bg-teal-600 text-white px-3 py-1 rounded-lg hover:bg-teal-700">
-              <i class="fas fa-paper-plane mr-1"></i>Send Now
+              class="text-xs bg-teal-600 text-white px-2.5 py-1 rounded-lg hover:bg-teal-700 whitespace-nowrap">
+              <i class="fas fa-paper-plane mr-1"></i>Send
             </button>
             {% endif %}
+            {% if b.status == 'completed' and b.failed_count %}
+            <button onclick="retryFailed({{ b.id }}, this)"
+              class="text-xs bg-orange-500 text-white px-2.5 py-1 rounded-lg hover:bg-orange-600 whitespace-nowrap">
+              <i class="fas fa-redo mr-1"></i>Retry
+            </button>
+            {% endif %}
+            <button onclick="viewDetail({{ b.id }})"
+              class="text-xs text-gray-400 hover:text-teal-600 px-2 py-1" title="Analytics">
+              <i class="fas fa-chart-bar"></i>
+            </button>
             {% if b.status in ('draft', 'scheduled') %}
             <button onclick="cancelBroadcast({{ b.id }}, this)"
-              class="text-xs text-red-400 hover:text-red-600 px-2 py-1">
+              class="text-xs text-red-400 hover:text-red-600 px-2 py-1" title="Cancel">
               <i class="fas fa-times"></i>
+            </button>
+            {% endif %}
+            {% if b.status in ('draft', 'completed', 'cancelled', 'failed') %}
+            <button onclick="deleteBroadcast({{ b.id }}, this)"
+              class="text-xs text-gray-300 hover:text-red-400 px-2 py-1" title="Delete">
+              <i class="fas fa-trash"></i>
             </button>
             {% endif %}
           </div>
@@ -98,7 +157,7 @@
       {% else %}
       <tr><td colspan="7" class="py-16 text-center text-gray-400">
         <i class="fas fa-bullhorn text-4xl mb-3 block opacity-20"></i>
-        <p>No broadcasts yet. Create one to send bulk messages.</p>
+        <p class="text-sm">No campaigns yet. Click <strong>New Campaign</strong> to start.</p>
       </td></tr>
       {% endfor %}
     </tbody>
@@ -106,35 +165,154 @@
   </div>
 </div>
 
-<!-- New Broadcast Modal -->
-<div id="new-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-  <div class="bg-white rounded-2xl shadow-xl w-full max-w-[min(28rem,90vw)] p-6 max-h-[90vh] overflow-y-auto">
-    <div class="flex items-center justify-between mb-5">
-      <h3 class="font-semibold text-gray-800">New Broadcast</h3>
-      <button onclick="document.getElementById('new-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">
-        <i class="fas fa-times"></i>
-      </button>
+<!-- ═══════════════════════════════════════════════════════
+     NEW CAMPAIGN MODAL
+════════════════════════════════════════════════════════ -->
+<div id="new-modal" class="hidden fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-8">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+      <h2 class="text-base font-semibold text-gray-800">
+        <i class="fas fa-bullhorn text-teal-500 mr-2"></i>New Bulk Campaign
+      </h2>
+      <button onclick="document.getElementById('new-modal').classList.add('hidden')"
+        class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
     </div>
-    <form id="bc-form" class="space-y-4">
+
+    <form id="new-form" class="px-6 py-5 space-y-5">
+
+      <!-- Campaign Name -->
       <div>
-        <label class="block text-xs font-medium text-gray-600 mb-1">Campaign Name *</label>
-        <input type="text" name="name" required placeholder="e.g. April Offer 2026"
+        <label class="block text-xs font-medium text-gray-600 mb-1">Campaign Name <span class="text-red-400">*</span></label>
+        <input type="text" name="name" placeholder="e.g. Diwali Sale 2026" required
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
       </div>
+
+      <!-- Template -->
       <div>
-        <label class="block text-xs font-medium text-gray-600 mb-1">WhatsApp Template *</label>
-        <select name="template_name" required
+        <label class="block text-xs font-medium text-gray-600 mb-1">Message Template <span class="text-red-400">*</span></label>
+        {% if templates %}
+        <select name="template_name" id="sel-template" onchange="onTemplateChange(this)"
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400">
-          <option value="">Select approved template...</option>
+          <option value="">— Select an approved template —</option>
           {% for t in templates %}
-          <option value="{{ t.name }}">{{ t.name }} ({{ t.language }})</option>
+          <option value="{{ t.name }}"
+            data-lang="{{ t.language or 'en' }}"
+            data-body="{{ t.body or '' }}">{{ t.name }} ({{ t.language or 'en' }})</option>
           {% endfor %}
         </select>
+        {% else %}
+        <p class="text-sm text-red-500">No approved templates. <a href="/templates" class="underline">Sync first →</a></p>
+        {% endif %}
+        <input type="hidden" name="template_language" id="tpl-lang" value="en"/>
       </div>
+
+      <!-- Template Preview -->
+      <div id="tpl-preview" class="hidden bg-gray-50 rounded-xl p-4">
+        <p class="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Template Body</p>
+        <div class="bg-white border border-gray-200 rounded-xl p-3 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap" id="tpl-body-text"></div>
+        <p class="text-xs text-gray-400 mt-2">
+          <i class="fas fa-info-circle mr-1"></i>Variables like <code>{{"{{"}}1{{"}}"}}</code> will be filled per recipient below.
+        </p>
+      </div>
+
+      <!-- Variable Personalization -->
+      <div id="variable-section" class="hidden">
+        <label class="block text-xs font-medium text-gray-600 mb-2">
+          Personalize Variables
+          <span class="text-gray-400 font-normal ml-1">— map each variable to a contact field or fixed text</span>
+        </label>
+        <div id="variable-rows" class="space-y-2"></div>
+      </div>
+
+      <!-- Target Audience -->
       <div>
-        <label class="block text-xs font-medium text-gray-600 mb-1">Filter by Tags (optional)</label>
-        <input type="text" name="target_tags" placeholder="vip, customer (blank = all contacts)"
-          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
+        <label class="block text-xs font-medium text-gray-600 mb-2">Target Audience</label>
+        <div class="flex gap-2 flex-wrap mb-3">
+          <label class="cursor-pointer">
+            <input type="radio" name="target_mode" value="all" checked onchange="onTargetChange(this)" class="sr-only peer"/>
+            <span class="text-xs px-3 py-1.5 rounded-full border border-gray-200 peer-checked:bg-teal-600 peer-checked:text-white peer-checked:border-teal-600 hover:border-teal-400 transition select-none">
+              <i class="fas fa-users mr-1"></i>All Opted-In
+            </span>
+          </label>
+          <label class="cursor-pointer">
+            <input type="radio" name="target_mode" value="tags" onchange="onTargetChange(this)" class="sr-only peer"/>
+            <span class="text-xs px-3 py-1.5 rounded-full border border-gray-200 peer-checked:bg-teal-600 peer-checked:text-white peer-checked:border-teal-600 hover:border-teal-400 transition select-none">
+              <i class="fas fa-tag mr-1"></i>By Tags
+            </span>
+          </label>
+          <label class="cursor-pointer">
+            <input type="radio" name="target_mode" value="segment" onchange="onTargetChange(this)" class="sr-only peer"/>
+            <span class="text-xs px-3 py-1.5 rounded-full border border-gray-200 peer-checked:bg-teal-600 peer-checked:text-white peer-checked:border-teal-600 hover:border-teal-400 transition select-none">
+              <i class="fas fa-filter mr-1"></i>Segment Filter
+            </span>
+          </label>
+        </div>
+
+        <!-- Tags -->
+        <div id="tags-section" class="hidden">
+          <p class="text-xs text-gray-500 mb-2">Select tags — contacts must match at least one:</p>
+          <div class="flex flex-wrap gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200 max-h-32 overflow-y-auto">
+            {% if all_tags %}
+              {% for tag in all_tags %}
+              <label class="cursor-pointer select-none">
+                <input type="checkbox" name="tag_check" value="{{ tag }}" class="sr-only peer" onchange="updateTagInput()"/>
+                <span class="text-xs px-2.5 py-1 rounded-full border border-gray-200 bg-white peer-checked:bg-teal-100 peer-checked:border-teal-400 peer-checked:text-teal-700 hover:border-teal-300 transition">{{ tag }}</span>
+              </label>
+              {% endfor %}
+            {% else %}
+              <p class="text-xs text-gray-400">No tags found. Add tags to contacts first.</p>
+            {% endif %}
+          </div>
+          <input type="hidden" name="target_tags" id="target_tags_input" value=""/>
+        </div>
+
+        <!-- Segment filter -->
+        <div id="segment-section" class="hidden space-y-3">
+          <div class="grid grid-cols-2 gap-2">
+            <label class="flex items-center gap-2 text-xs text-gray-600 p-2.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 select-none">
+              <input type="checkbox" id="seg-has-name" class="rounded" onchange="buildSegment()"/>
+              Must have name
+            </label>
+            <label class="flex items-center gap-2 text-xs text-gray-600 p-2.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 select-none">
+              <input type="checkbox" id="seg-has-email" class="rounded" onchange="buildSegment()"/>
+              Must have email
+            </label>
+          </div>
+          <div>
+            <p class="text-xs text-gray-500 mb-1.5"><i class="fas fa-plus-circle text-green-500 mr-1"></i>Include contacts with tags:</p>
+            <div class="flex flex-wrap gap-1.5 p-2 bg-gray-50 rounded-lg border border-gray-200 max-h-20 overflow-y-auto">
+              {% for tag in all_tags %}
+              <label class="cursor-pointer select-none">
+                <input type="checkbox" class="sr-only seg-include-tag peer" value="{{ tag }}" onchange="buildSegment()"/>
+                <span class="text-xs px-2 py-0.5 rounded-full border border-gray-200 bg-white peer-checked:bg-green-100 peer-checked:border-green-400 peer-checked:text-green-700 hover:border-green-300 transition">{{ tag }}</span>
+              </label>
+              {% endfor %}
+              {% if not all_tags %}<p class="text-xs text-gray-400">No tags available</p>{% endif %}
+            </div>
+          </div>
+          <div>
+            <p class="text-xs text-gray-500 mb-1.5"><i class="fas fa-minus-circle text-red-400 mr-1"></i>Exclude contacts with tags:</p>
+            <div class="flex flex-wrap gap-1.5 p-2 bg-gray-50 rounded-lg border border-gray-200 max-h-20 overflow-y-auto">
+              {% for tag in all_tags %}
+              <label class="cursor-pointer select-none">
+                <input type="checkbox" class="sr-only seg-exclude-tag peer" value="{{ tag }}" onchange="buildSegment()"/>
+                <span class="text-xs px-2 py-0.5 rounded-full border border-gray-200 bg-white peer-checked:bg-red-100 peer-checked:border-red-400 peer-checked:text-red-700 hover:border-red-300 transition">{{ tag }}</span>
+              </label>
+              {% endfor %}
+              {% if not all_tags %}<p class="text-xs text-gray-400">No tags available</p>{% endif %}
+            </div>
+          </div>
+          <input type="hidden" name="segment_filter" id="segment_filter_input" value="{}"/>
+        </div>
+
+        <!-- Recipient preview -->
+        <div class="mt-3 flex items-center gap-3">
+          <button type="button" onclick="previewCount()"
+            class="text-xs text-teal-600 hover:text-teal-800 underline flex items-center gap-1">
+            <i class="fas fa-users"></i> Preview recipient count
+          </button>
+          <span id="recipient-preview" class="text-xs font-semibold text-teal-700 hidden"></span>
+        </div>
       </div>
 
       <!-- Schedule -->
@@ -142,150 +320,419 @@
         <label class="block text-xs font-medium text-gray-600 mb-1">Schedule (optional)</label>
         <input type="datetime-local" name="scheduled_at" min="{{ now }}"
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
-        <p class="text-xs text-gray-400 mt-1">Leave blank to create a draft. Set a time to auto-send.</p>
+        <p class="text-xs text-gray-400 mt-1">Leave blank to save as draft and send manually.</p>
       </div>
 
-      <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-xs text-yellow-700">
-        <i class="fas fa-info-circle mr-1"></i>
-        Only opted-in, non-blocked contacts will receive this broadcast.
+      <!-- Hidden computed fields -->
+      <input type="hidden" name="variable_mapping" id="variable_mapping_input" value="{}"/>
+      <input type="hidden" name="static_variables" id="static_variables_input" value="{}"/>
+
+      <!-- Submit -->
+      <div class="flex gap-3 pt-2 border-t border-gray-100">
+        <button type="button" onclick="submitCampaign()"
+          class="flex-1 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition">
+          <i class="fas fa-bullhorn mr-2"></i>Create Campaign
+        </button>
+        <button type="button" onclick="document.getElementById('new-modal').classList.add('hidden')"
+          class="px-4 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+          Cancel
+        </button>
       </div>
-      <button type="button" onclick="createBroadcast()"
-        class="w-full bg-teal-600 hover:bg-teal-700 text-white py-2.5 rounded-lg text-sm font-medium">
-        Create Broadcast
-      </button>
     </form>
   </div>
 </div>
-<!-- Failures Modal -->
-<div id="failures-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-  <div class="bg-white rounded-2xl shadow-xl w-full max-w-[min(32rem,90vw)] p-6 max-h-[80vh] flex flex-col">
-    <div class="flex items-center justify-between mb-4">
-      <h3 class="font-semibold text-gray-800">Failed Recipients</h3>
-      <button onclick="document.getElementById('failures-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">
-        <i class="fas fa-times"></i>
-      </button>
+
+<!-- ═══════════════════════════════════════════════════════
+     FAILURES MODAL
+════════════════════════════════════════════════════════ -->
+<div id="error-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+      <h2 class="text-base font-semibold text-gray-800">
+        <i class="fas fa-exclamation-circle text-red-500 mr-2"></i>Failed Recipients
+      </h2>
+      <button onclick="document.getElementById('error-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
     </div>
-    <div id="failures-list" class="flex-1 overflow-y-auto space-y-2"></div>
+    <div id="error-list" class="overflow-y-auto px-6 py-4 space-y-2 text-sm flex-1"></div>
   </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
+<!-- ═══════════════════════════════════════════════════════
+     ANALYTICS DETAIL MODAL
+════════════════════════════════════════════════════════ -->
+<div id="detail-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
+      <h2 class="text-base font-semibold text-gray-800">
+        <i class="fas fa-chart-bar text-teal-500 mr-2"></i>Campaign Analytics
+      </h2>
+      <button onclick="document.getElementById('detail-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+    </div>
+    <div id="detail-body" class="px-6 py-5"></div>
+  </div>
+</div>
+
 <script>
-  // Live status polling — runs every 3s when any broadcast is running
-  const runningIds = new Set(
-    [...document.querySelectorAll('[data-broadcast-id]')]
-      .filter(el => el.dataset.status === 'running')
-      .map(el => el.dataset.broadcastId)
-  );
+{% raw %}
+// ── Template handling ────────────────────────────────────────────────────────
 
-  function updateRow(b) {
-    const pct = b.total_count > 0 ? Math.round(b.sent_count / b.total_count * 100) : 0;
-    const statusBadge = document.getElementById(`status-${b.id}`);
-    const progressBar = document.getElementById(`bar-${b.id}`);
-    const progressText = document.getElementById(`progress-${b.id}`);
-    const deliveredEl = document.getElementById(`delivered-${b.id}`);
-    const failedEl = document.getElementById(`failed-${b.id}`);
+function onTemplateChange(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  const body = opt.dataset.body || '';
+  const lang = opt.dataset.lang || 'en';
+  document.getElementById('tpl-lang').value = lang;
 
-    if (statusBadge) {
-      if (b.status === 'completed') {
-        statusBadge.className = 'text-xs bg-green-50 text-green-600 px-2 py-0.5 rounded-full';
-        statusBadge.textContent = 'Completed';
-      } else if (b.status === 'running') {
-        statusBadge.className = 'text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full animate-pulse';
-        statusBadge.textContent = 'Running';
-      }
-    }
-    if (progressBar) progressBar.style.width = pct + '%';
-    if (progressText) progressText.textContent = `${b.sent_count}/${b.total_count}`;
-    if (deliveredEl && b.delivered_count > 0) {
-      deliveredEl.textContent = b.delivered_count + ' delivered';
-      deliveredEl.classList.remove('hidden');
-    }
-    if (failedEl) {
-      if (b.failed_count > 0) {
-        failedEl.textContent = b.failed_count + ' failed';
-        failedEl.classList.remove('hidden');
-      } else {
-        failedEl.classList.add('hidden');
-      }
-    }
+  const preview = document.getElementById('tpl-preview');
+  document.getElementById('tpl-body-text').textContent = body;
+  preview.classList.toggle('hidden', !body);
 
-    if (b.status === 'completed') {
-      runningIds.delete(String(b.id));
-      // Remove animate-pulse from send button row if present
-      const sendBtn = document.getElementById(`send-btn-${b.id}`);
-      if (sendBtn) sendBtn.remove();
-    }
+  // Detect {{n}} variables
+  const varSection = document.getElementById('variable-section');
+  const varRows = document.getElementById('variable-rows');
+  const matches = [...new Set((body.match(/\{\{(\d+)\}\}/g) || []))].sort((a, b) => {
+    return parseInt(a.replace(/\D/g,'')) - parseInt(b.replace(/\D/g,''));
+  });
+
+  if (matches.length > 0) {
+    varRows.innerHTML = matches.map(m => {
+      const idx = m.replace(/[{}]/g, '');
+      return `<div class="flex items-center gap-2 p-2.5 bg-gray-50 rounded-lg border border-gray-100">
+        <span class="text-xs font-mono text-teal-700 w-8 flex-shrink-0 font-bold">{{${idx}}}</span>
+        <select class="var-type flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-teal-400 bg-white" data-idx="${idx}" onchange="toggleVarInput(this)">
+          <option value="field:first_name">Contact First Name</option>
+          <option value="field:name">Contact Full Name</option>
+          <option value="field:phone">Contact Phone</option>
+          <option value="field:email">Contact Email</option>
+          <option value="static">Fixed Text for Everyone</option>
+        </select>
+        <input type="text" class="var-static-input hidden border border-gray-200 rounded-lg px-2 py-1.5 text-xs w-32 focus:outline-none focus:ring-1 focus:ring-teal-400" placeholder="e.g. 50% OFF" data-idx="${idx}"/>
+      </div>`;
+    }).join('');
+    varSection.classList.remove('hidden');
+  } else {
+    varSection.classList.add('hidden');
+    varRows.innerHTML = '';
+  }
+}
+
+function toggleVarInput(sel) {
+  const idx = sel.dataset.idx;
+  const inp = document.querySelector(`.var-static-input[data-idx="${idx}"]`);
+  inp.classList.toggle('hidden', sel.value !== 'static');
+}
+
+// ── Target mode ──────────────────────────────────────────────────────────────
+
+function onTargetChange(radio) {
+  document.getElementById('tags-section').classList.add('hidden');
+  document.getElementById('segment-section').classList.add('hidden');
+  if (radio.value === 'tags') document.getElementById('tags-section').classList.remove('hidden');
+  if (radio.value === 'segment') document.getElementById('segment-section').classList.remove('hidden');
+  document.getElementById('recipient-preview').classList.add('hidden');
+}
+
+function updateTagInput() {
+  const checked = [...document.querySelectorAll('input[name="tag_check"]:checked')].map(el => el.value);
+  document.getElementById('target_tags_input').value = checked.join(',');
+  document.getElementById('recipient-preview').classList.add('hidden');
+}
+
+function buildSegment() {
+  const hasName = document.getElementById('seg-has-name').checked;
+  const hasEmail = document.getElementById('seg-has-email').checked;
+  const inc = [...document.querySelectorAll('.seg-include-tag:checked')].map(el => el.value);
+  const exc = [...document.querySelectorAll('.seg-exclude-tag:checked')].map(el => el.value);
+  const seg = {};
+  if (hasName) seg.has_name = true;
+  if (hasEmail) seg.has_email = true;
+  if (inc.length) seg.tags_include = inc;
+  if (exc.length) seg.tags_exclude = exc;
+  document.getElementById('segment_filter_input').value = JSON.stringify(seg);
+  document.getElementById('recipient-preview').classList.add('hidden');
+}
+
+async function previewCount() {
+  const targetMode = document.querySelector('input[name="target_mode"]:checked').value;
+  const targetTags = document.getElementById('target_tags_input').value.split(',').filter(Boolean);
+  const segFilter = JSON.parse(document.getElementById('segment_filter_input').value || '{}');
+
+  const resp = await fetch('/broadcasts/preview-count', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({target_mode: targetMode, target_tags: targetTags, segment_filter: segFilter}),
+  });
+  if (resp.ok) {
+    const data = await resp.json();
+    const el = document.getElementById('recipient-preview');
+    el.textContent = `~${data.count} opted-in contacts will receive this`;
+    el.classList.remove('hidden');
+  }
+}
+
+// ── Form submission ──────────────────────────────────────────────────────────
+
+function openNewModal() {
+  const form = document.getElementById('new-form');
+  form.reset();
+  document.getElementById('tpl-preview').classList.add('hidden');
+  document.getElementById('variable-section').classList.add('hidden');
+  document.getElementById('variable-rows').innerHTML = '';
+  document.getElementById('tags-section').classList.add('hidden');
+  document.getElementById('segment-section').classList.add('hidden');
+  document.getElementById('recipient-preview').classList.add('hidden');
+  document.getElementById('variable_mapping_input').value = '{}';
+  document.getElementById('static_variables_input').value = '{}';
+  document.getElementById('segment_filter_input').value = '{}';
+  document.getElementById('target_tags_input').value = '';
+  document.getElementById('new-modal').classList.remove('hidden');
+}
+
+async function submitCampaign() {
+  const form = document.getElementById('new-form');
+  const tplSel = document.getElementById('sel-template');
+  if (tplSel && !tplSel.value) {
+    alert('Please select a template.'); return;
   }
 
-  async function pollStatus() {
-    if (runningIds.size === 0) return;
-    try {
-      const r = await fetch('/broadcasts/status');
-      if (!r.ok) return;
-      const data = await r.json();
-      data.forEach(updateRow);
-    } catch (_) {}
-    if (runningIds.size > 0) setTimeout(pollStatus, 3000);
-  }
-
-  if (runningIds.size > 0) setTimeout(pollStatus, 3000);
-
-  async function viewErrors(broadcastId) {
-    const r = await fetch(`/broadcasts/${broadcastId}/failures`);
-    const data = await r.json();
-    const list = document.getElementById('failures-list');
-    if (!data.length) {
-      list.innerHTML = '<p class="text-sm text-gray-400 py-4 text-center">No failures found.</p>';
+  // Collect variable mapping
+  const varMapping = {};
+  const staticVars = {};
+  document.querySelectorAll('.var-type').forEach(sel => {
+    const idx = sel.dataset.idx;
+    if (sel.value.startsWith('field:')) {
+      varMapping[idx] = sel.value.replace('field:', '');
     } else {
-      list.innerHTML = data.map(f => `
-        <div class="bg-red-50 border border-red-100 rounded-lg p-3">
-          <div class="flex items-center justify-between mb-1">
-            <span class="text-sm font-medium text-gray-800">${f.name || f.phone}</span>
-            <span class="text-xs text-gray-400 font-mono">+${f.phone}</span>
+      const val = document.querySelector(`.var-static-input[data-idx="${idx}"]`).value.trim();
+      if (val) staticVars[idx] = val;
+    }
+  });
+  document.getElementById('variable_mapping_input').value = JSON.stringify(varMapping);
+  document.getElementById('static_variables_input').value = JSON.stringify(staticVars);
+
+  const data = new FormData(form);
+  const btn = form.querySelector('button[onclick="submitCampaign()"]');
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Creating...';
+  btn.disabled = true;
+
+  try {
+    const resp = await fetch('/broadcasts/create', {method: 'POST', body: data});
+    const result = await resp.json();
+    if (!resp.ok) {
+      alert(result.error || 'Failed to create campaign');
+      return;
+    }
+    document.getElementById('new-modal').classList.add('hidden');
+    location.reload();
+  } catch (e) {
+    alert('Network error. Please try again.');
+  } finally {
+    btn.innerHTML = orig;
+    btn.disabled = false;
+  }
+}
+
+// ── Campaign actions ─────────────────────────────────────────────────────────
+
+async function sendBroadcast(id, btn) {
+  if (!confirm('Send this campaign now to all targeted recipients?')) return;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Starting...';
+  const resp = await fetch(`/broadcasts/${id}/send`, {method: 'POST'});
+  if (resp.ok) {
+    document.getElementById(`status-${id}`).className = 'text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full animate-pulse';
+    document.getElementById(`status-${id}`).textContent = 'Running';
+    btn.remove();
+  } else {
+    const d = await resp.json();
+    alert(d.error || 'Failed to start campaign');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i>Send';
+  }
+}
+
+async function retryFailed(id, btn) {
+  if (!confirm('Retry all failed recipients for this campaign?')) return;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Retrying...';
+  const resp = await fetch(`/broadcasts/${id}/retry-failed`, {method: 'POST'});
+  const data = await resp.json();
+  if (resp.ok) {
+    alert(`Retrying ${data.count} failed recipients...`);
+    location.reload();
+  } else {
+    alert(data.error || 'Retry failed');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-redo mr-1"></i>Retry';
+  }
+}
+
+async function cancelBroadcast(id, btn) {
+  if (!confirm('Cancel this campaign?')) return;
+  const resp = await fetch(`/broadcasts/${id}/cancel`, {method: 'POST'});
+  if (resp.ok) {
+    document.getElementById(`status-${id}`).textContent = 'Cancelled';
+    document.getElementById(`status-${id}`).className = 'text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full';
+    btn.remove();
+  } else {
+    const d = await resp.json();
+    alert(d.error || 'Cannot cancel');
+  }
+}
+
+async function deleteBroadcast(id, btn) {
+  if (!confirm('Permanently delete this campaign and all its data?')) return;
+  const resp = await fetch(`/broadcasts/${id}`, {method: 'DELETE'});
+  if (resp.ok) {
+    document.getElementById(`row-${id}`).remove();
+  } else {
+    const d = await resp.json();
+    alert(d.error || 'Cannot delete');
+  }
+}
+
+async function viewErrors(id) {
+  const resp = await fetch(`/broadcasts/${id}/failures`);
+  const failures = await resp.json();
+  const list = document.getElementById('error-list');
+  if (!failures.length) {
+    list.innerHTML = '<p class="text-gray-400 text-sm py-4 text-center">No failures recorded.</p>';
+  } else {
+    list.innerHTML = failures.map(f => `
+      <div class="p-3 bg-red-50 rounded-lg border border-red-100">
+        <div class="flex justify-between items-start gap-2">
+          <div class="min-w-0">
+            <p class="font-medium text-gray-700 text-xs truncate">${f.name || '—'} <span class="font-mono text-gray-400">+${f.phone}</span></p>
+            <p class="text-red-600 text-xs mt-0.5 break-words">${f.error}</p>
           </div>
-          <p class="text-xs text-red-600"><i class="fas fa-exclamation-circle mr-1"></i>${f.error}</p>
-        </div>`).join('');
-    }
-    document.getElementById('failures-modal').classList.remove('hidden');
+          ${f.retries ? `<span class="text-xs text-gray-400 flex-shrink-0 whitespace-nowrap">${f.retries} retries</span>` : ''}
+        </div>
+      </div>`).join('');
   }
+  document.getElementById('error-modal').classList.remove('hidden');
+}
 
-  async function createBroadcast() {
-    const fd = new FormData(document.getElementById('bc-form'));
-    const r = await fetch('/broadcasts/create', {method: 'POST', body: fd});
-    const data = await r.json();
-    if (r.ok) {
-      document.getElementById('new-modal').classList.add('hidden');
-      const msg = data.scheduled
-        ? `Broadcast scheduled for ${new Date(data.scheduled).toLocaleString()} — ${data.total} recipients`
-        : `Broadcast created with ${data.total} recipients!`;
-      alert(msg);
-      location.reload();
-    } else {
-      alert(data.error || 'Failed to create broadcast');
-    }
-  }
+async function viewDetail(id) {
+  const resp = await fetch(`/broadcasts/${id}/detail`);
+  if (!resp.ok) { alert('Failed to load analytics'); return; }
+  const b = await resp.json();
 
-  async function sendBroadcast(id, btn) {
-    if (!confirm('Send this broadcast now to all recipients?')) return;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Starting...';
-    const r = await fetch(`/broadcasts/${id}/send`, {method: 'POST'});
-    if (r.ok) {
-      location.reload();
-    } else {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i>Send Now';
-      alert('Failed to start broadcast');
-    }
-  }
+  const sent = b.sent_count || 0;
+  const delivered = b.delivered_count || 0;
+  const read = b.read_count || 0;
+  const failed = b.failed_count || 0;
+  const total = b.total_count || 1;
 
-  async function cancelBroadcast(id, btn) {
-    if (!confirm('Cancel this broadcast?')) return;
-    const r = await fetch(`/broadcasts/${id}/cancel`, {method: 'POST'});
-    if (r.ok) location.reload();
-    else alert('Failed to cancel');
-  }
+  const bar = (val, max, color) => {
+    const pct = max > 0 ? Math.min(Math.round(val / max * 100), 100) : 0;
+    return `<div class="flex items-center gap-2 text-xs">
+      <div class="flex-1 h-2 bg-gray-100 rounded-full"><div class="h-2 rounded-full ${color}" style="width:${pct}%"></div></div>
+      <span class="w-8 text-right text-gray-500">${pct}%</span>
+    </div>`;
+  };
+
+  document.getElementById('detail-body').innerHTML = `
+    <div class="mb-5">
+      <p class="text-sm font-semibold text-gray-800">${b.name}</p>
+      <p class="text-xs text-gray-400 font-mono mt-0.5">${b.template_name} (${(b.target_mode||'all').replace('_',' ')})</p>
+    </div>
+
+    <div class="grid grid-cols-2 gap-3 mb-5">
+      <div class="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+        <p class="text-2xl font-bold text-gray-700">${b.total_count}</p>
+        <p class="text-xs text-gray-400 mt-0.5">Targeted</p>
+      </div>
+      <div class="bg-blue-50 rounded-xl p-3 text-center border border-blue-100">
+        <p class="text-2xl font-bold text-blue-600">${sent}</p>
+        <p class="text-xs text-gray-400 mt-0.5">Sent</p>
+      </div>
+    </div>
+
+    <div class="space-y-3 mb-5">
+      <div class="p-3 bg-teal-50 rounded-xl border border-teal-100">
+        <div class="flex justify-between items-center mb-1.5">
+          <span class="text-xs font-medium text-teal-700"><i class="fas fa-check-double mr-1"></i>Delivered</span>
+          <span class="text-sm font-bold text-teal-700">${delivered} <span class="text-xs font-normal text-teal-500">(${b.delivery_rate}%)</span></span>
+        </div>
+        ${bar(delivered, sent, 'bg-teal-500')}
+      </div>
+      <div class="p-3 bg-purple-50 rounded-xl border border-purple-100">
+        <div class="flex justify-between items-center mb-1.5">
+          <span class="text-xs font-medium text-purple-700"><i class="fas fa-eye mr-1"></i>Read</span>
+          <span class="text-sm font-bold text-purple-700">${read} <span class="text-xs font-normal text-purple-500">(${b.read_rate}%)</span></span>
+        </div>
+        ${bar(read, delivered, 'bg-purple-500')}
+      </div>
+      ${failed ? `<div class="p-3 bg-red-50 rounded-xl border border-red-100">
+        <div class="flex justify-between items-center">
+          <span class="text-xs font-medium text-red-600"><i class="fas fa-exclamation-circle mr-1"></i>Failed</span>
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-bold text-red-600">${failed}</span>
+            <button onclick="viewErrors(${b.id}); document.getElementById('detail-modal').classList.add('hidden')"
+              class="text-xs text-red-600 underline">View →</button>
+          </div>
+        </div>
+        ${b.retry_count ? `<p class="text-xs text-gray-400 mt-1">${b.retry_count} retry run(s) performed</p>` : ''}
+      </div>` : ''}
+    </div>
+
+    <div class="space-y-1.5 text-xs text-gray-400 pt-3 border-t border-gray-100">
+      ${b.scheduled_at ? `<p><i class="fas fa-clock w-4 mr-1"></i>Scheduled: ${new Date(b.scheduled_at).toLocaleString('en-IN')}</p>` : ''}
+      ${b.started_at ? `<p><i class="fas fa-play w-4 mr-1"></i>Started: ${new Date(b.started_at).toLocaleString('en-IN')}</p>` : ''}
+      ${b.completed_at ? `<p><i class="fas fa-check-circle w-4 mr-1 text-green-400"></i>Completed: ${new Date(b.completed_at).toLocaleString('en-IN')}</p>` : ''}
+    </div>
+  `;
+  document.getElementById('detail-modal').classList.remove('hidden');
+}
+
+// ── Live polling ─────────────────────────────────────────────────────────────
+
+async function pollStatus() {
+  try {
+    const resp = await fetch('/broadcasts/status');
+    if (!resp.ok) return;
+    const rows = await resp.json();
+    rows.forEach(b => {
+      const statusEl = document.getElementById(`status-${b.id}`);
+      if (!statusEl) return;
+      const total = b.total_count || 1;
+
+      const barEl = document.getElementById(`bar-${b.id}`);
+      const progEl = document.getElementById(`progress-${b.id}`);
+      const delivEl = document.getElementById(`delivered-${b.id}`);
+      const readEl = document.getElementById(`read-${b.id}`);
+      const failEl = document.getElementById(`failed-${b.id}`);
+
+      if (barEl) barEl.style.width = Math.min(Math.round(b.sent_count / total * 100), 100) + '%';
+      if (progEl) progEl.textContent = `${b.sent_count}/${total}`;
+
+      if (delivEl && b.delivered_count > 0) {
+        delivEl.classList.remove('hidden');
+        const dv = delivEl.querySelector('.delivered-val');
+        if (dv) dv.textContent = b.delivered_count;
+      }
+      if (readEl && b.read_count > 0) {
+        readEl.classList.remove('hidden');
+        const rv = readEl.querySelector('.read-val');
+        if (rv) rv.textContent = b.read_count;
+      }
+      if (failEl && b.failed_count > 0) {
+        failEl.classList.remove('hidden');
+        const fv = failEl.querySelector('.failed-val');
+        if (fv) fv.textContent = b.failed_count;
+      }
+
+      if (b.status === 'completed') {
+        statusEl.className = 'text-xs bg-green-50 text-green-600 px-2 py-0.5 rounded-full';
+        statusEl.textContent = 'Completed';
+      }
+    });
+  } catch (e) {}
+}
+
+// Poll every 4s if any running, else 20s
+const hasRunning = !!document.querySelector('[data-status="running"]');
+setInterval(pollStatus, hasRunning ? 4000 : 20000);
+{% endraw %}
 </script>
 {% endblock %}

@@ -19,11 +19,12 @@ templates = Jinja2Templates(directory="app/templates")
 
 
 @router.get("")
-async def verify_webhook(
-    hub_mode: str | None = None,
-    hub_challenge: str | None = None,
-    hub_verify_token: str | None = None,
-):
+async def verify_webhook(request: Request):
+    # Meta sends params with dots (hub.mode) which FastAPI can't map to underscored args
+    params = request.query_params
+    hub_mode = params.get("hub.mode")
+    hub_verify_token = params.get("hub.verify_token")
+    hub_challenge = params.get("hub.challenge")
     if hub_mode == "subscribe" and hub_verify_token == settings.whatsapp_webhook_verify_token:
         logger.info("Webhook verified successfully")
         return Response(content=hub_challenge, media_type="text/plain")

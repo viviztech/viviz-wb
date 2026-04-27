@@ -5,14 +5,63 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+import logging
 
 from app.database import get_db
 from app.models.admin import Admin
+from app.models.lead import Lead
+
+logger = logging.getLogger(__name__)
 from app.services.auth import authenticate_admin, hash_password
 
 router = APIRouter(tags=["auth"])
 templates = Jinja2Templates(directory="app/templates")
 limiter = Limiter(key_func=get_remote_address)
+
+
+@router.get("/", response_class=HTMLResponse)
+async def landing_page(request: Request):
+    if request.session.get("admin_email"):
+        return RedirectResponse("/dashboard", status_code=302)
+    return templates.TemplateResponse("landing.html", {"request": request})
+
+
+@router.post("/leads")
+@limiter.limit("10/minute")
+async def submit_lead(
+    request: Request,
+    first_name: str = Form(...),
+    last_name: str = Form(""),
+    business_name: str = Form(...),
+    phone: str = Form(...),
+    email: str = Form(...),
+    business_type: str = Form(""),
+    volume: str = Form(""),
+    message: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    phone = phone.strip().lstrip("+").replace(" ", "")
+    if not phone.startswith("91"):
+        phone = "91" + phone
+
+    lead = Lead(
+        first_name=first_name.strip(),
+        last_name=last_name.strip(),
+        business_name=business_name.strip(),
+        phone=phone,
+        email=email.strip().lower(),
+        business_type=business_type or None,
+        volume=volume or None,
+        message=message.strip() or None,
+    )
+    db.add(lead)
+    await db.commit()
+    logger.info(f"New lead: {first_name} {last_name} — {business_name} ({phone})")
+
+    return templates.TemplateResponse("landing.html", {
+        "request": request,
+        "lead_success": True,
+    })
 
 
 @router.get("/login", response_class=HTMLResponse)

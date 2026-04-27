@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from app.database import get_db
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message, MessageDirection
+from app.models.lead import Lead
 from app.services.auth import get_session
 
 router = APIRouter(tags=["dashboard"])
@@ -23,7 +24,7 @@ def _auth(request: Request):
     return request.session.get("admin_email")
 
 
-@router.get("/", response_class=HTMLResponse)
+@router.get("/go", response_class=HTMLResponse)
 async def root(request: Request):
     return RedirectResponse("/dashboard", status_code=302)
 
@@ -112,3 +113,52 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
         "recent_conversations": conv_data,
         "page": "dashboard",
     })
+
+
+from fastapi.responses import JSONResponse, StreamingResponse
+import csv, io
+
+@router.get("/leads", response_class=HTMLResponse)
+async def leads_page(request: Request, db: AsyncSession = Depends(get_db)):
+    if not _auth(request):
+        return RedirectResponse("/login", status_code=302)
+    leads = (await db.execute(
+        select(Lead).order_by(desc(Lead.created_at)).limit(200)
+    )).scalars().all()
+    now = datetime.utcnow()
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return templates.TemplateResponse("dashboard/leads.html", {
+        "request": request,
+        "admin_name": request.session.get("admin_name", "Admin"),
+        "leads": leads,
+        "page": "leads",
+        "now": now,
+        "today": today,
+        "timedelta": timedelta,
+    })
+
+
+@router.get("/leads/export")
+async def leads_export(request: Request, db: AsyncSession = Depends(get_db)):
+    if not _auth(request):
+        return RedirectResponse("/login", status_code=302)
+    leads = (await db.execute(
+        select(Lead).order_by(desc(Lead.created_at))
+    )).scalars().all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Name", "Business", "Phone", "Email", "Industry", "Volume", "Message", "Date"])
+    for l in leads:
+        writer.writerow([
+            f"{l.first_name} {l.last_name or ''}".strip(),
+            l.business_name, l.phone, l.email,
+            l.business_type or "", l.volume or "",
+            l.message or "", l.created_at.strftime("%Y-%m-%d %H:%M"),
+        ])
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=leads.csv"},
+    )

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func
 from datetime import datetime
 from typing import Optional
 import asyncio
@@ -436,8 +436,19 @@ async def _send_broadcast_messages(broadcast_id: int):
             )
         )).scalars().all()
 
-        sent = broadcast.sent_count or 0
-        failed = broadcast.failed_count or 0
+        # Count from DB truth, not accumulated variable, to avoid double-counting on retry
+        sent = (await db.execute(
+            select(func.count(BroadcastRecipient.id)).where(
+                BroadcastRecipient.broadcast_id == broadcast_id,
+                BroadcastRecipient.status.in_(["sent", "delivered", "read"]),
+            )
+        )).scalar() or 0
+        failed = (await db.execute(
+            select(func.count(BroadcastRecipient.id)).where(
+                BroadcastRecipient.broadcast_id == broadcast_id,
+                BroadcastRecipient.status == "failed",
+            )
+        )).scalar() or 0
         delay = 1.0 / SEND_RATE_PER_SEC
 
         # Determine whether to route through MM Lite for this broadcast

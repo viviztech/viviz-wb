@@ -2,10 +2,10 @@ from fastapi import APIRouter, Request, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc, or_
+from sqlalchemy import select, func, desc, or_, delete
 from app.database import get_db
 from app.models.contact import Contact
-import csv, io
+import csv, io, json
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
 templates = Jinja2Templates(directory="app/templates")
@@ -167,6 +167,49 @@ async def import_contacts(
 
     await db.commit()
     return JSONResponse({"added": added, "skipped": skipped, "errors": errors[:10]})
+
+
+@router.get("/tags")
+async def list_tags(request: Request, db: AsyncSession = Depends(get_db)):
+    if not _auth(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    contacts = (await db.execute(select(Contact.tags))).scalars().all()
+    tag_set = set()
+    for tags in contacts:
+        for t in (tags or []):
+            if t:
+                tag_set.add(t)
+    return JSONResponse(sorted(tag_set))
+
+
+@router.post("/bulk-delete-preview")
+async def bulk_delete_preview(request: Request, db: AsyncSession = Depends(get_db)):
+    if not _auth(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    body = await request.json()
+    tags = body.get("tags", [])
+    if not tags or not isinstance(tags, list):
+        return JSONResponse({"count": 0})
+    all_contacts = (await db.execute(select(Contact))).scalars().all()
+    count = sum(1 for c in all_contacts if any(t in (c.tags or []) for t in tags))
+    return JSONResponse({"count": count})
+
+
+@router.post("/bulk-delete")
+async def bulk_delete_by_tags(request: Request, db: AsyncSession = Depends(get_db)):
+    if not _auth(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    body = await request.json()
+    tags = body.get("tags", [])
+    if not tags or not isinstance(tags, list):
+        return JSONResponse({"error": "Provide a non-empty list of tags"}, status_code=400)
+
+    all_contacts = (await db.execute(select(Contact))).scalars().all()
+    to_delete = [c for c in all_contacts if any(t in (c.tags or []) for t in tags)]
+    for c in to_delete:
+        await db.delete(c)
+    await db.commit()
+    return JSONResponse({"deleted": len(to_delete)})
 
 
 @router.get("/export")

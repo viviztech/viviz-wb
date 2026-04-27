@@ -11,6 +11,10 @@
     class="text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 flex items-center gap-1">
     <i class="fas fa-upload"></i> <span class="hidden sm:inline">Import CSV</span>
   </button>
+  <button onclick="openDeleteByTagModal()"
+    class="text-xs px-3 py-1.5 border border-red-200 rounded-lg hover:bg-red-50 text-red-600 flex items-center gap-1">
+    <i class="fas fa-tags"></i> <span class="hidden sm:inline">Delete by Tag</span>
+  </button>
   <button onclick="document.getElementById('add-modal').classList.remove('hidden')"
     class="text-xs px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg flex items-center gap-1">
     <i class="fas fa-plus"></i> <span class="hidden sm:inline">Add Contact</span>
@@ -259,6 +263,36 @@
     </form>
   </div>
 </div>
+<!-- Delete by Tag Modal -->
+<div id="delete-tag-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-[min(28rem,90vw)] p-6">
+    <div class="flex items-center justify-between mb-5">
+      <h3 class="font-semibold text-gray-800">Delete Contacts by Tag</h3>
+      <button onclick="document.getElementById('delete-tag-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <p class="text-xs text-gray-500 mb-4">Select one or more tags. All contacts that have <strong>any</strong> of the selected tags will be permanently deleted.</p>
+    <div id="tag-list" class="flex flex-wrap gap-2 mb-4 min-h-[2.5rem]">
+      <span class="text-xs text-gray-400 italic">Loading tags…</span>
+    </div>
+    <div id="delete-tag-confirm" class="hidden bg-red-50 border border-red-100 rounded-lg p-3 mb-4 text-xs text-red-700">
+      <i class="fas fa-exclamation-triangle mr-1"></i>
+      This will permanently delete <strong id="delete-tag-count">0</strong> contacts. This cannot be undone.
+    </div>
+    <p id="delete-tag-result" class="text-xs hidden mb-2"></p>
+    <div class="flex gap-2">
+      <button type="button" onclick="document.getElementById('delete-tag-modal').classList.add('hidden')"
+        class="flex-1 border border-gray-200 text-gray-600 py-2.5 rounded-lg text-sm hover:bg-gray-50">
+        Cancel
+      </button>
+      <button type="button" id="delete-tag-btn" onclick="confirmDeleteByTag()"
+        class="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+        Delete Contacts
+      </button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -313,6 +347,97 @@
     } else {
       errEl.textContent = data.error || 'Failed to save';
       errEl.classList.remove('hidden');
+    }
+  }
+
+  let _selectedDeleteTags = new Set();
+
+  async function openDeleteByTagModal() {
+    _selectedDeleteTags = new Set();
+    const modal = document.getElementById('delete-tag-modal');
+    const tagList = document.getElementById('tag-list');
+    const confirmBox = document.getElementById('delete-tag-confirm');
+    const resultEl = document.getElementById('delete-tag-result');
+    const btn = document.getElementById('delete-tag-btn');
+
+    confirmBox.classList.add('hidden');
+    resultEl.classList.add('hidden');
+    btn.disabled = true;
+    tagList.innerHTML = '<span class="text-xs text-gray-400 italic">Loading tags…</span>';
+    modal.classList.remove('hidden');
+
+    const r = await fetch('/contacts/tags');
+    const tags = await r.json();
+    if (!tags.length) {
+      tagList.innerHTML = '<span class="text-xs text-gray-400 italic">No tags found</span>';
+      return;
+    }
+    tagList.innerHTML = tags.map(tag =>
+      `<button type="button" data-tag="${tag}"
+        class="tag-pill text-xs px-3 py-1 rounded-full border border-gray-200 bg-gray-50 text-gray-700 hover:border-red-400 hover:text-red-600 transition"
+        onclick="toggleDeleteTag(this)">${tag}</button>`
+    ).join('');
+  }
+
+  async function toggleDeleteTag(btn) {
+    const tag = btn.dataset.tag;
+    if (_selectedDeleteTags.has(tag)) {
+      _selectedDeleteTags.delete(tag);
+      btn.classList.remove('border-red-500', 'bg-red-50', 'text-red-700');
+      btn.classList.add('border-gray-200', 'bg-gray-50', 'text-gray-700');
+    } else {
+      _selectedDeleteTags.add(tag);
+      btn.classList.add('border-red-500', 'bg-red-50', 'text-red-700');
+      btn.classList.remove('border-gray-200', 'bg-gray-50', 'text-gray-700');
+    }
+
+    const deleteBtn = document.getElementById('delete-tag-btn');
+    const confirmBox = document.getElementById('delete-tag-confirm');
+
+    if (_selectedDeleteTags.size === 0) {
+      deleteBtn.disabled = true;
+      confirmBox.classList.add('hidden');
+      return;
+    }
+
+    deleteBtn.disabled = true;
+    confirmBox.classList.add('hidden');
+    const r = await fetch('/contacts/bulk-delete-preview', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tags: [..._selectedDeleteTags]})
+    });
+    if (r.ok) {
+      const data = await r.json();
+      document.getElementById('delete-tag-count').textContent = data.count;
+      confirmBox.classList.remove('hidden');
+      deleteBtn.disabled = data.count === 0;
+    }
+  }
+
+  async function confirmDeleteByTag() {
+    if (!_selectedDeleteTags.size) return;
+    const btn = document.getElementById('delete-tag-btn');
+    const resultEl = document.getElementById('delete-tag-result');
+    btn.disabled = true;
+    btn.textContent = 'Deleting…';
+
+    const r = await fetch('/contacts/bulk-delete', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tags: [..._selectedDeleteTags]})
+    });
+    const data = await r.json();
+    resultEl.classList.remove('hidden');
+    if (r.ok) {
+      resultEl.className = 'text-xs text-green-700 bg-green-50 rounded p-2 mb-2';
+      resultEl.textContent = `Deleted ${data.deleted} contact(s).`;
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      resultEl.className = 'text-xs text-red-600 mb-2';
+      resultEl.textContent = data.error || 'Delete failed';
+      btn.disabled = false;
+      btn.textContent = 'Delete Contacts';
     }
   }
 

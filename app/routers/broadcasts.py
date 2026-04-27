@@ -521,6 +521,10 @@ async def _send_broadcast_messages(broadcast_id: int):
                 recipient.error_message = last_error[:500]
                 failed += 1
                 logger.error(f"Broadcast {broadcast_id}: failed for {contact.phone}: {last_error}")
+                if _is_spam_rate_limit(last_error):
+                    # Back off before continuing to other recipients so we don't
+                    # compound the rate-limit signal on the WABA.
+                    await asyncio.sleep(30)
 
             broadcast.sent_count = sent
             broadcast.failed_count = failed
@@ -550,8 +554,13 @@ def _is_param_mismatch_error(error_msg: str) -> bool:
     return "132000" in error_msg or "number of parameters does not match" in error_msg.lower()
 
 
+def _is_spam_rate_limit(error_msg: str) -> bool:
+    """Meta #130429 — per-recipient spam rate limit hit. Retrying makes it worse."""
+    return "130429" in error_msg or "spam rate limit" in error_msg.lower()
+
+
 def _is_fatal_error(error_msg: str) -> bool:
-    """Errors that should not be retried (invalid number, opted-out, etc.)."""
+    """Errors that should not be retried (invalid number, opted-out, spam-limited, etc.)."""
     fatal_fragments = [
         "not a valid whatsapp",
         "recipient phone number not in allowed list",
@@ -560,4 +569,4 @@ def _is_fatal_error(error_msg: str) -> bool:
         "unknown contact",
     ]
     lower = error_msg.lower()
-    return any(f in lower for f in fatal_fragments)
+    return _is_spam_rate_limit(error_msg) or any(f in lower for f in fatal_fragments)

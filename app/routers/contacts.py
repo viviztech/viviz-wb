@@ -182,6 +182,11 @@ async def list_tags(request: Request, db: AsyncSession = Depends(get_db)):
     return JSONResponse(sorted(tag_set))
 
 
+def _match_tags(contacts, tags):
+    tag_set = set(tags)
+    return [c for c in contacts if tag_set.intersection(c.tags or [])]
+
+
 @router.post("/bulk-delete-preview")
 async def bulk_delete_preview(request: Request, db: AsyncSession = Depends(get_db)):
     if not _auth(request):
@@ -191,8 +196,7 @@ async def bulk_delete_preview(request: Request, db: AsyncSession = Depends(get_d
     if not tags or not isinstance(tags, list):
         return JSONResponse({"count": 0})
     all_contacts = (await db.execute(select(Contact))).scalars().all()
-    count = sum(1 for c in all_contacts if any(t in (c.tags or []) for t in tags))
-    return JSONResponse({"count": count})
+    return JSONResponse({"count": len(_match_tags(all_contacts, tags))})
 
 
 @router.post("/bulk-delete")
@@ -205,11 +209,21 @@ async def bulk_delete_by_tags(request: Request, db: AsyncSession = Depends(get_d
         return JSONResponse({"error": "Provide a non-empty list of tags"}, status_code=400)
 
     all_contacts = (await db.execute(select(Contact))).scalars().all()
-    to_delete = [c for c in all_contacts if any(t in (c.tags or []) for t in tags)]
-    for c in to_delete:
-        await db.delete(c)
+    to_delete = _match_tags(all_contacts, tags)
+    if not to_delete:
+        return JSONResponse({"deleted": 0})
+
+    ids = [c.id for c in to_delete]
+    from sqlalchemy import text
+    # Remove dependent rows before deleting contacts to satisfy FK constraints
+    await db.execute(text("DELETE FROM broadcast_recipients WHERE contact_id = ANY(:ids)"), {"ids": ids})
+    await db.execute(text("DELETE FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE contact_id = ANY(:ids))"), {"ids": ids})
+    await db.execute(text("DELETE FROM conversations WHERE contact_id = ANY(:ids)"), {"ids": ids})
+    await db.execute(text("DELETE FROM drip_enrollments WHERE contact_id = ANY(:ids)"), {"ids": ids})
+    await db.execute(text("DELETE FROM campaign_flow_states WHERE contact_id = ANY(:ids)"), {"ids": ids})
+    await db.execute(text("DELETE FROM contacts WHERE id = ANY(:ids)"), {"ids": ids})
     await db.commit()
-    return JSONResponse({"deleted": len(to_delete)})
+    return JSONResponse({"deleted": len(ids)})
 
 
 @router.get("/export")

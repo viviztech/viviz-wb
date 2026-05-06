@@ -11,7 +11,7 @@ pydantic-settings==2.6.1
 anthropic==0.40.0
 apscheduler==3.10.4
 boto3==1.35.81
-Pillow==11.0.0
+Pillow==12.0.0
 qrcode==8.0
 aiofiles==24.1.0
 itsdangerous==2.2.0

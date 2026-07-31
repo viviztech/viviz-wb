@@ -10,6 +10,8 @@ from app.database import get_db
 from app.config import settings
 from app.models.webhook import WebhookLog
 from app.services.message_handler import handle_webhook_payload
+from app.services.auth import verify_webhook_signature
+import json
 import logging
 
 router = APIRouter(prefix="/webhook", tags=["webhook"])
@@ -34,11 +36,26 @@ async def verify_webhook(request: Request):
 @router.post("")
 @limiter.limit("300/minute")
 async def receive_webhook(request: Request, db: AsyncSession = Depends(get_db)):
+    raw_body = await request.body()
+
+    if settings.meta_app_secret:
+        signature = request.headers.get("x-hub-signature-256", "")
+        if not verify_webhook_signature(raw_body, signature, settings.meta_app_secret):
+            logger.warning("Webhook signature verification failed — rejecting payload")
+            raise HTTPException(status_code=403, detail="Invalid signature")
+    else:
+        logger.warning(
+            "META_APP_SECRET is not configured — webhook signature verification is "
+            "disabled. Anyone who discovers this URL can forge webhook events."
+        )
+
     try:
-        payload = await request.json()
+        payload = json.loads(raw_body)
         logger.info(f"Webhook received: {payload.get('object', 'unknown')}")
         await handle_webhook_payload(payload, db)
         return {"status": "ok"}
+    except HTTPException:
+        raise
     except Exception as ex:
         logger.exception(f"Webhook processing error: {ex}")
         return {"status": "ok"}

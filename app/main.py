@@ -10,10 +10,11 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from app.config import settings
+from app.config import settings, check_insecure_defaults
 from app.database import init_db, AsyncSessionLocal
 from app.services.auth import ensure_admin_exists
-from app.routers import webhook, auth, dashboard, conversations, contacts, broadcasts, templates, api, quick_replies, analytics, auto_replies, optin, mm_lite
+from app.services.app_settings import load_overrides
+from app.routers import webhook, auth, dashboard, conversations, contacts, broadcasts, templates, api, quick_replies, analytics, auto_replies, optin, mm_lite, compliance, settings as settings_router
 import app.models  # ensure all models imported for init_db
 from app.scheduler import start_scheduler, stop_scheduler
 from app.logging_config import configure_logging, RequestIDMiddleware
@@ -39,10 +40,30 @@ except Exception:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting Viviz WhatsApp Business API...")
+
     await init_db()
     async with AsyncSessionLocal() as db:
+        await load_overrides(db)
         await ensure_admin_exists(db)
     logger.info("Database initialized. Admin user ensured.")
+
+    insecure = check_insecure_defaults(settings)
+    if insecure:
+        message = (
+            f"Insecure placeholder value(s) still in use for: {', '.join(insecure)}. "
+            "Set these in your .env before going live — anyone who reads the source "
+            "knows their default values (guessable webhook token / session secret / admin login)."
+        )
+        if settings.debug:
+            logger.warning(message)
+        else:
+            logger.critical(message)
+            raise RuntimeError(
+                "Refusing to start in production (debug=False) with insecure default "
+                f"settings: {', '.join(insecure)}. Set real values in .env, or set DEBUG=true "
+                "for local development."
+            )
+
     start_scheduler()
     yield
     stop_scheduler()
@@ -89,6 +110,8 @@ app.include_router(analytics.router)
 app.include_router(auto_replies.router)
 app.include_router(optin.router)
 app.include_router(mm_lite.router)
+app.include_router(compliance.router)
+app.include_router(settings_router.router)
 
 
 @app.exception_handler(404)

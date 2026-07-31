@@ -13,6 +13,7 @@ from app.models.lead import Lead
 
 logger = logging.getLogger(__name__)
 from app.services.auth import authenticate_admin, hash_password
+from app.services.audit import log_event
 
 router = APIRouter(tags=["auth"])
 templates = Jinja2Templates(directory="app/templates")
@@ -20,10 +21,10 @@ limiter = Limiter(key_func=get_remote_address)
 
 
 @router.get("/", response_class=HTMLResponse)
-async def landing_page(request: Request):
+async def root(request: Request):
     if request.session.get("admin_email"):
         return RedirectResponse("/dashboard", status_code=302)
-    return templates.TemplateResponse("landing.html", {"request": request})
+    return templates.TemplateResponse("dashboard/login.html", {"request": request})
 
 
 @router.post("/leads")
@@ -86,6 +87,7 @@ async def login(
             {"request": request, "error": "Invalid email or password"},
             status_code=401,
         )
+    await log_event(db, actor=admin.email, action="admin_login", target_type="admin", target_id=admin.id)
     await db.commit()
     request.session["admin_email"] = admin.email
     request.session["admin_name"] = admin.name

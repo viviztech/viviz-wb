@@ -9,10 +9,19 @@ from app.models.contact import Contact
 from app.models.conversation import Conversation, Message, MessageDirection, MessageType, MessageStatus
 from app.services.whatsapp import whatsapp
 from app.services.ai import generate_reply
-from datetime import datetime
+from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 templates = Jinja2Templates(directory="app/templates")
+
+SERVICE_WINDOW_HOURS = 24
+
+
+def _within_service_window(conv: Conversation) -> bool:
+    """Meta only allows free-form (session) messages within 24h of the customer's last inbound message."""
+    if not conv.last_inbound_at:
+        return False
+    return datetime.utcnow() - conv.last_inbound_at < timedelta(hours=SERVICE_WINDOW_HOURS)
 
 
 def _auth(request: Request):
@@ -109,6 +118,7 @@ async def conversation_detail(conv_id: int, request: Request, db: AsyncSession =
         "contact": contact,
         "messages": messages,
         "page": "conversations",
+        "within_window": _within_service_window(conv),
     })
 
 
@@ -125,6 +135,14 @@ async def send_message(
     conv = (await db.execute(select(Conversation).where(Conversation.id == conv_id))).scalar_one_or_none()
     if not conv:
         raise HTTPException(404, "Not found")
+
+    if not _within_service_window(conv):
+        return JSONResponse({
+            "error": "The 24-hour customer service window has closed for this conversation. "
+                     "Meta only allows free-form replies within 24h of the customer's last message — "
+                     "send an approved template message instead.",
+            "window_closed": True,
+        }, status_code=409)
 
     contact = (await db.execute(select(Contact).where(Contact.id == conv.contact_id))).scalar_one_or_none()
 
@@ -153,6 +171,13 @@ async def ai_reply(conv_id: int, request: Request, db: AsyncSession = Depends(ge
     conv = (await db.execute(select(Conversation).where(Conversation.id == conv_id))).scalar_one_or_none()
     if not conv:
         raise HTTPException(404, "Not found")
+
+    if not _within_service_window(conv):
+        return JSONResponse({
+            "error": "The 24-hour customer service window has closed for this conversation. "
+                     "Send an approved template message instead.",
+            "window_closed": True,
+        }, status_code=409)
 
     contact = (await db.execute(select(Contact).where(Contact.id == conv.contact_id))).scalar_one_or_none()
     messages = (await db.execute(

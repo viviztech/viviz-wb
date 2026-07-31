@@ -97,6 +97,14 @@
               class="text-xs {% if c.is_blocked %}text-green-600{% else %}text-red-400{% endif %} hover:underline whitespace-nowrap">
               {{ 'Unblock' if c.is_blocked else 'Block' }}
             </button>
+            <a href="/contacts/{{ c.id }}/export-data"
+              class="text-xs text-gray-500 hover:underline whitespace-nowrap" title="Export all stored data (privacy request)">
+              Export
+            </a>
+            <button onclick="eraseContactData({{ c.id }}, '{{ c.phone }}')"
+              class="text-xs text-red-500 hover:underline whitespace-nowrap" title="Permanently erase all data (right to erasure)">
+              Erase
+            </button>
           </div>
         </td>
       </tr>
@@ -313,6 +321,17 @@
   async function toggleBlock(id, btn) {
     const r = await fetch(`/contacts/${id}/block`, {method: 'POST'});
     if (r.ok) location.reload();
+  }
+
+  async function eraseContactData(id, phone) {
+    if (!confirm(`Permanently erase ALL data for +${phone}? This deletes their conversations, messages and broadcast history and cannot be undone.`)) return;
+    const r = await fetch(`/contacts/${id}/erase-data`, {method: 'POST'});
+    if (r.ok) {
+      location.reload();
+    } else {
+      const data = await r.json().catch(() => ({}));
+      alert(data.error || 'Failed to erase contact data');
+    }
   }
 
   document.addEventListener('click', function(e) {

@@ -14,6 +14,7 @@ from app.models.broadcast import Broadcast, BroadcastRecipient
 from app.models.contact import Contact
 from app.models.template import MessageTemplate
 from app.services.whatsapp import whatsapp
+from app.services.audit import log_event
 
 router = APIRouter(prefix="/broadcasts", tags=["broadcasts"])
 templates = Jinja2Templates(directory="app/templates")
@@ -318,6 +319,10 @@ async def send_broadcast(broadcast_id: int, request: Request, db: AsyncSession =
 
     broadcast.status = "running"
     broadcast.started_at = datetime.utcnow()
+    await log_event(db, actor=request.session.get("admin_email", "admin"), action="broadcast_send",
+                     target_type="broadcast", target_id=broadcast.id,
+                     meta={"name": broadcast.name, "template": broadcast.template_name,
+                           "recipient_count": broadcast.total_count})
     await db.commit()
 
     asyncio.create_task(_send_broadcast_messages(broadcast_id))

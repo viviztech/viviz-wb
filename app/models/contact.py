@@ -16,6 +16,9 @@ class Contact(Base):
     tags = Column(JSON, default=list)
     notes = Column(Text, nullable=True)
     is_opted_in = Column(Boolean, default=True)
+    opt_in_source = Column(String(50), nullable=True)  # whatsapp_inbound, keyword_start, manual_admin, csv_import
+    opt_in_at = Column(DateTime, nullable=True)
+    opt_out_at = Column(DateTime, nullable=True)
     is_blocked = Column(Boolean, default=False)
     last_seen = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

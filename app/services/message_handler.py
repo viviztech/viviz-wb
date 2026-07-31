@@ -6,6 +6,7 @@ from app.models.conversation import Conversation, Message, MessageDirection, Mes
 from app.models.webhook import WebhookLog
 from app.services.whatsapp import whatsapp
 from app.services.media import upload_media_to_s3
+from app.services.audit import log_event
 import logging
 
 logger = logging.getLogger(__name__)
@@ -83,7 +84,11 @@ async def _handle_incoming_message(msg: dict, contact_map: dict, db: AsyncSessio
     result = await db.execute(select(Contact).where(Contact.phone == from_phone))
     contact = result.scalar_one_or_none()
     if not contact:
-        contact = Contact(phone=from_phone, wa_id=from_phone, profile_name=profile_name)
+        now = datetime.utcnow()
+        contact = Contact(
+            phone=from_phone, wa_id=from_phone, profile_name=profile_name,
+            is_opted_in=True, opt_in_source="whatsapp_inbound", opt_in_at=now,
+        )
         db.add(contact)
         await db.flush()
     else:
@@ -101,7 +106,9 @@ async def _handle_incoming_message(msg: dict, contact_map: dict, db: AsyncSessio
         db.add(conversation)
         await db.flush()
 
-    conversation.last_message_at = datetime.utcnow()
+    now = datetime.utcnow()
+    conversation.last_message_at = now
+    conversation.last_inbound_at = now
 
     # Extract content
     content, media_id, caption = _extract_message_content(msg, msg_type)
@@ -268,7 +275,10 @@ async def _check_optout(text: str, contact: Contact, to_phone: str, db: AsyncSes
     if lower in _OPT_OUT_KEYWORDS:
         if contact.is_opted_in:
             contact.is_opted_in = False
+            contact.opt_out_at = datetime.utcnow()
             logger.info(f"Contact {to_phone} opted out via keyword: {text!r}")
+            await log_event(db, actor="system", action="opt_out", target_type="contact",
+                             target_id=contact.id, meta={"keyword": text, "phone": to_phone})
             try:
                 await whatsapp.send_text(
                     to_phone,
@@ -282,7 +292,11 @@ async def _check_optout(text: str, contact: Contact, to_phone: str, db: AsyncSes
     if lower in _OPT_IN_KEYWORDS:
         if not contact.is_opted_in:
             contact.is_opted_in = True
+            contact.opt_in_source = "keyword_start"
+            contact.opt_in_at = datetime.utcnow()
             logger.info(f"Contact {to_phone} opted in via keyword: {text!r}")
+            await log_event(db, actor="system", action="opt_in", target_type="contact",
+                             target_id=contact.id, meta={"keyword": text, "phone": to_phone})
             try:
                 await whatsapp.send_text(
                     to_phone,

@@ -5,6 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, or_, delete
 from app.database import get_db
 from app.models.contact import Contact
+from app.services.audit import log_event
+from datetime import datetime
 import csv, io, json
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
@@ -74,7 +76,10 @@ async def add_contact(
         return JSONResponse({"error": "Contact already exists"}, status_code=400)
 
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
-    contact = Contact(phone=phone, name=name, email=email, tags=tag_list, notes=notes)
+    contact = Contact(
+        phone=phone, name=name, email=email, tags=tag_list, notes=notes,
+        is_opted_in=True, opt_in_source="manual_admin", opt_in_at=datetime.utcnow(),
+    )
     db.add(contact)
     await db.flush()
     return JSONResponse({"status": "created", "id": contact.id})
@@ -96,11 +101,24 @@ async def update_contact(
     contact = (await db.execute(select(Contact).where(Contact.id == contact_id))).scalar_one_or_none()
     if not contact:
         raise HTTPException(404, "Not found")
+    new_opted_in = is_opted_in.lower() == "true"
+    if new_opted_in != contact.is_opted_in:
+        now = datetime.utcnow()
+        if new_opted_in:
+            contact.opt_in_source = "manual_admin"
+            contact.opt_in_at = now
+        else:
+            contact.opt_out_at = now
+        await log_event(db, actor=request.session.get("admin_email", "admin"),
+                         action="opt_in" if new_opted_in else "opt_out",
+                         target_type="contact", target_id=contact.id,
+                         meta={"source": "manual_admin"})
+
     contact.name = name
     contact.email = email
     contact.tags = [t.strip() for t in tags.split(",") if t.strip()]
     contact.notes = notes
-    contact.is_opted_in = is_opted_in.lower() == "true"
+    contact.is_opted_in = new_opted_in
     await db.commit()
     return JSONResponse({"status": "updated"})
 
@@ -162,7 +180,10 @@ async def import_contacts(
                    [t.strip() for t in tags_raw.split(",") if t.strip()]
         notes = (row.get("notes") or row.get("note") or "").strip()
 
-        db.add(Contact(phone=phone, name=name, email=email, tags=tag_list, notes=notes))
+        db.add(Contact(
+            phone=phone, name=name, email=email, tags=tag_list, notes=notes,
+            is_opted_in=True, opt_in_source="csv_import", opt_in_at=datetime.utcnow(),
+        ))
         added += 1
 
     await db.commit()
@@ -224,6 +245,106 @@ async def bulk_delete_by_tags(request: Request, db: AsyncSession = Depends(get_d
     await db.execute(text("DELETE FROM contacts WHERE id = ANY(:ids)"), {"ids": ids})
     await db.commit()
     return JSONResponse({"deleted": len(ids)})
+
+
+@router.get("/{contact_id}/export-data")
+async def export_contact_data(contact_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    """Fulfil a data subject access/portability request — full export of everything stored for this contact."""
+    if not _auth(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    contact = (await db.execute(select(Contact).where(Contact.id == contact_id))).scalar_one_or_none()
+    if not contact:
+        raise HTTPException(404, "Not found")
+
+    from app.models.conversation import Conversation, Message
+    from app.models.broadcast import BroadcastRecipient
+
+    conversations = (await db.execute(
+        select(Conversation).where(Conversation.contact_id == contact_id)
+    )).scalars().all()
+    conv_ids = [c.id for c in conversations]
+    messages = []
+    if conv_ids:
+        messages = (await db.execute(
+            select(Message).where(Message.conversation_id.in_(conv_ids)).order_by(Message.created_at)
+        )).scalars().all()
+    recipients = (await db.execute(
+        select(BroadcastRecipient).where(BroadcastRecipient.contact_id == contact_id)
+    )).scalars().all()
+
+    data = {
+        "contact": {
+            "id": contact.id, "phone": contact.phone, "name": contact.name,
+            "profile_name": contact.profile_name, "email": contact.email,
+            "tags": contact.tags, "notes": contact.notes,
+            "is_opted_in": contact.is_opted_in, "opt_in_source": contact.opt_in_source,
+            "opt_in_at": contact.opt_in_at.isoformat() if contact.opt_in_at else None,
+            "opt_out_at": contact.opt_out_at.isoformat() if contact.opt_out_at else None,
+            "is_blocked": contact.is_blocked,
+            "created_at": contact.created_at.isoformat(),
+        },
+        "conversations": [
+            {"id": c.id, "status": c.status, "created_at": c.created_at.isoformat()}
+            for c in conversations
+        ],
+        "messages": [
+            {
+                "id": m.id, "direction": m.direction.value, "type": m.message_type.value,
+                "content": m.content, "status": m.status.value, "created_at": m.created_at.isoformat(),
+            }
+            for m in messages
+        ],
+        "broadcast_recipients": [
+            {
+                "broadcast_id": r.broadcast_id, "status": r.status,
+                "sent_at": r.sent_at.isoformat() if r.sent_at else None,
+            }
+            for r in recipients
+        ],
+    }
+
+    await log_event(db, actor=request.session.get("admin_email", "admin"), action="contact_data_export",
+                     target_type="contact", target_id=contact.id, meta={"phone": contact.phone})
+    await db.commit()
+
+    return JSONResponse(data, headers={
+        "Content-Disposition": f"attachment; filename=contact_{contact_id}_data_export.json"
+    })
+
+
+@router.post("/{contact_id}/erase-data")
+async def erase_contact_data(contact_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    """Fulfil a right-to-erasure request — permanently delete all data associated with this contact."""
+    if not _auth(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    contact = (await db.execute(select(Contact).where(Contact.id == contact_id))).scalar_one_or_none()
+    if not contact:
+        raise HTTPException(404, "Not found")
+
+    from app.models.conversation import Conversation, Message
+    from app.models.broadcast import BroadcastRecipient
+    from app.models.drip_campaign import DripEnrollment
+    from app.models.campaign_flow import CampaignFlowState
+
+    phone = contact.phone
+    await log_event(db, actor=request.session.get("admin_email", "admin"), action="contact_data_erasure",
+                     target_type="contact", target_id=contact.id, meta={"phone": phone})
+
+    conv_ids = (await db.execute(
+        select(Conversation.id).where(Conversation.contact_id == contact_id)
+    )).scalars().all()
+    if conv_ids:
+        await db.execute(delete(Message).where(Message.conversation_id.in_(conv_ids)))
+    await db.execute(delete(Conversation).where(Conversation.contact_id == contact_id))
+    await db.execute(delete(BroadcastRecipient).where(BroadcastRecipient.contact_id == contact_id))
+    await db.execute(delete(DripEnrollment).where(DripEnrollment.contact_id == contact_id))
+    await db.execute(delete(CampaignFlowState).where(CampaignFlowState.contact_id == contact_id))
+    await db.execute(delete(Contact).where(Contact.id == contact_id))
+    await db.commit()
+
+    return JSONResponse({"status": "erased", "phone": phone})
 
 
 @router.get("/export")

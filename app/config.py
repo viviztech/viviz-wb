@@ -57,6 +57,38 @@ class Settings(BaseSettings):
         extra = "ignore"
 
 
+# Credential/config fields that are safe to change at runtime (no server restart needed) and are
+# therefore editable from the dashboard Settings page, persisted in the app_settings DB table.
+# Excluded: anything baked into middleware/engines at process startup (secret_key, debug,
+# allowed_origins, database_url, redis_url) or tied to the separate admin-login flow.
+EDITABLE_SETTINGS = [
+    "whatsapp_phone_number_id",
+    "whatsapp_business_account_id",
+    "whatsapp_access_token",
+    "whatsapp_webhook_verify_token",
+    "meta_app_id",
+    "meta_app_secret",
+    "app_url",
+    "anthropic_api_key",
+    "aws_access_key_id",
+    "aws_secret_access_key",
+    "aws_region",
+    "s3_bucket_name",
+]
+
+
+_INSECURE_DEFAULTS = {
+    "secret_key": "change_this_secret_key_minimum_32_characters",
+    "whatsapp_webhook_verify_token": "viviz_webhook_secret_2024",
+    "admin_password": "Admin@1234",
+}
+
+
+def check_insecure_defaults(settings: "Settings") -> list[str]:
+    """Return the names of security-sensitive settings still on their placeholder default."""
+    return [name for name, default in _INSECURE_DEFAULTS.items() if getattr(settings, name) == default]
+
+
 @lru_cache()
 def get_settings() -> Settings:
     return Settings()

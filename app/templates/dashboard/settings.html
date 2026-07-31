@@ -1,0 +1,135 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Settings — Viviz WhatsApp{% endblock %}
+{% block page_title %}Configuration Status{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6" x-data="{
+  testing: false,
+  result: null,
+  async testConnection() {
+    this.testing = true;
+    this.result = null;
+    try {
+      const res = await fetch('/settings/test-connection', { method: 'POST' });
+      this.result = await res.json();
+    } catch (e) {
+      this.result = { ok: false, error: 'Request failed: ' + e };
+    }
+    this.testing = false;
+  }
+}">
+
+  {% if saved %}
+  <div class="rounded-xl border border-green-200 bg-green-50 text-green-800 text-sm px-4 py-3 flex items-center gap-2">
+    <i class="fas fa-check-circle"></i> Settings saved and applied — no restart needed.
+  </div>
+  {% endif %}
+
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <p class="text-sm text-gray-500">
+        {{ total_fields - missing }} of {{ total_fields }} settings configured
+        {% if missing %}<span class="text-amber-600 font-medium">— {{ missing }} missing</span>{% endif %}
+      </p>
+      <p class="text-xs text-gray-400 mt-1">
+        WhatsApp/Meta, AI, and AWS credentials can be edited directly below and take effect immediately.
+        Infrastructure settings (secret key, database, CORS, etc.) are still read from <code class="bg-gray-100 px-1 rounded">.env</code> and require a restart.
+      </p>
+    </div>
+    <div class="flex items-center gap-2 flex-shrink-0">
+      <a href="/settings/guide"
+        class="text-gray-600 hover:text-gray-800 text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 flex items-center gap-2">
+        <i class="fas fa-book"></i> Setup Guide
+      </a>
+      <button @click="testConnection()" :disabled="testing"
+        class="bg-wa-green hover:bg-green-600 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg flex items-center gap-2">
+        <i class="fas fa-plug" :class="testing && 'fa-spin fa-spinner'"></i>
+        <span x-text="testing ? 'Testing…' : 'Test WhatsApp Connection'"></span>
+      </button>
+    </div>
+  </div>
+
+  <div x-show="result" x-cloak
+    class="rounded-xl border p-4 text-sm"
+    :class="result && result.ok ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'">
+    <template x-if="result && result.ok">
+      <div>
+        <p class="font-semibold flex items-center gap-2"><i class="fas fa-check-circle"></i> Connected to Meta WhatsApp Cloud API</p>
+        <dl class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+          <dt class="text-green-600">Verified Name</dt><dd x-text="result.verified_name || '—'"></dd>
+          <dt class="text-green-600">Display Number</dt><dd x-text="result.display_phone_number || '—'"></dd>
+          <dt class="text-green-600">Quality Rating</dt><dd x-text="result.quality_rating || '—'"></dd>
+          <dt class="text-green-600">Verification Status</dt><dd x-text="result.code_verification_status || '—'"></dd>
+        </dl>
+      </div>
+    </template>
+    <template x-if="result && !result.ok">
+      <p class="flex items-start gap-2"><i class="fas fa-times-circle mt-0.5"></i> <span x-text="result.error"></span></p>
+    </template>
+  </div>
+
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+    <p class="text-xs font-medium text-gray-500 uppercase mb-2">Webhook Callback URL</p>
+    <p class="text-xs text-gray-400 mb-2">Enter this in Meta App Dashboard → WhatsApp → Configuration → Callback URL.</p>
+    <code class="block bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 text-sm text-gray-700 break-all">{{ webhook_callback_url }}</code>
+  </div>
+
+  <form method="post" action="/settings/update" class="space-y-6">
+    {% for section in sections %}
+    <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div class="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
+        <i class="fas {{ section.icon }} text-gray-400"></i>
+        <h2 class="text-sm font-semibold text-gray-700">{{ section.name }}</h2>
+      </div>
+      <div class="divide-y divide-gray-50">
+        {% for f in section.fields %}
+        <div class="px-5 py-3 flex flex-wrap items-center justify-between gap-3">
+          <label for="{{ f.key }}" class="text-sm text-gray-600 sm:w-56 flex-shrink-0">{{ f.label }}</label>
+          <div class="flex items-center gap-2 min-w-0 flex-1 justify-end flex-wrap">
+            {% if f.editable %}
+              {% if f.secret %}
+                <input type="password" id="{{ f.key }}" name="{{ f.key }}" autocomplete="off"
+                  placeholder="{% if f.set %}{{ f.display }} — leave blank to keep{% else %}not set{% endif %}"
+                  class="text-xs border border-gray-200 rounded-lg px-3 py-1.5 w-64 focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+              {% else %}
+                <input type="text" id="{{ f.key }}" name="{{ f.key }}" value="{{ f.raw }}" autocomplete="off"
+                  placeholder="not set"
+                  class="text-xs border border-gray-200 rounded-lg px-3 py-1.5 w-64 focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+              {% endif %}
+            {% else %}
+              <code class="text-xs text-gray-500 truncate max-w-[220px]">{{ f.display }}</code>
+            {% endif %}
+            {% if f.set %}
+              {% if f.insecure %}
+                <span class="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 whitespace-nowrap">
+                  <i class="fas fa-exclamation-triangle"></i> default value
+                </span>
+              {% else %}
+                <span class="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 whitespace-nowrap">set</span>
+              {% endif %}
+            {% else %}
+              <span class="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 whitespace-nowrap">
+                <i class="fas fa-times"></i> not set
+              </span>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+
+    <div class="flex items-center justify-between gap-3">
+      <p class="text-xs text-gray-400">Leave a field blank to keep its current value. Changes apply immediately, without a restart.</p>
+      <button type="submit"
+        class="bg-teal-700 hover:bg-teal-800 text-white text-sm font-medium px-5 py-2.5 rounded-lg flex items-center gap-2 flex-shrink-0">
+        <i class="fas fa-save"></i> Save Changes
+      </button>
+    </div>
+  </form>
+
+  <p class="text-xs text-gray-400 text-center pb-4">
+    See the <a href="/settings/guide" class="text-teal-700 hover:underline">Setup Guide</a> for the full step-by-step configuration walkthrough.
+  </p>
+</div>
+{% endblock %}

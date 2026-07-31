@@ -41,6 +41,7 @@ class Conversation(Base):
     status = Column(String(20), default="open")
     assigned_to = Column(String(100), nullable=True)
     last_message_at = Column(DateTime, nullable=True)
+    last_inbound_at = Column(DateTime, nullable=True)  # last customer message — anchors the 24h service window
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

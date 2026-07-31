@@ -1,0 +1,78 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Audit Trail — Viviz WhatsApp{% endblock %}
+{% block page_title %}Compliance Audit Trail{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap gap-2 mb-4 items-center">
+  <span class="text-sm text-gray-500 flex-shrink-0">{{ total }} events</span>
+  <div class="flex gap-1 flex-wrap">
+    <a href="/compliance/audit-logs" class="text-xs px-3 py-1.5 rounded-lg {% if not action_filter %}bg-teal-600 text-white{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200{% endif %}">All</a>
+    {% for a in actions %}
+    <a href="/compliance/audit-logs?action={{ a }}"
+      class="text-xs px-3 py-1.5 rounded-lg {% if action_filter == a %}bg-teal-600 text-white{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200{% endif %}">
+      {{ a }}
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+  <div class="overflow-x-auto">
+  <table class="w-full text-sm min-w-[560px]">
+    <thead>
+      <tr class="bg-gray-50 text-left">
+        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">ID</th>
+        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase">Action</th>
+        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase">Actor</th>
+        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase hidden md:table-cell">Target</th>
+        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase hidden lg:table-cell">Details</th>
+        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Time</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-50">
+      {% for log in logs %}
+      <tr class="hover:bg-gray-50 transition">
+        <td class="px-4 py-3 text-xs text-gray-400 hidden sm:table-cell">{{ log.id }}</td>
+        <td class="px-4 py-3 whitespace-nowrap">
+          <span class="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-700">{{ log.action }}</span>
+        </td>
+        <td class="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">{{ log.actor }}</td>
+        <td class="px-4 py-3 text-xs text-gray-400 whitespace-nowrap hidden md:table-cell">
+          {% if log.target_type %}{{ log.target_type }}#{{ log.target_id }}{% else %}—{% endif %}
+        </td>
+        <td class="px-4 py-3 text-xs text-gray-400 truncate max-w-[240px] hidden lg:table-cell font-mono">
+          {{ log.meta | tojson if log.meta else '—' }}
+        </td>
+        <td class="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{{ log.created_at.strftime('%d %b %H:%M:%S') }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="py-16 text-center text-gray-400">
+        <i class="fas fa-shield-alt text-4xl mb-3 block opacity-20"></i>
+        <p>No audit events recorded yet.</p>
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  {% if total_pages > 1 %}
+  <div class="px-5 py-3 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-2">
+    <span class="text-xs text-gray-400">Page {{ current_page }} of {{ total_pages }}</span>
+    <div class="flex gap-1">
+      {% if current_page > 1 %}
+      <a href="/compliance/audit-logs?page={{ current_page - 1 }}{% if action_filter %}&action={{ action_filter }}{% endif %}"
+        class="text-xs px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600">
+        <i class="fas fa-chevron-left mr-1"></i>Prev
+      </a>
+      {% endif %}
+      {% if current_page < total_pages %}
+      <a href="/compliance/audit-logs?page={{ current_page + 1 }}{% if action_filter %}&action={{ action_filter }}{% endif %}"
+        class="text-xs px-3 py-1.5 bg-teal-600 hover:bg-teal-700 rounded-lg text-white">
+        Next<i class="fas fa-chevron-right ml-1"></i>
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

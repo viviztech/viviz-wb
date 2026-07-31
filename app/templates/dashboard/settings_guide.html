@@ -1,0 +1,37 @@
+{% extends "dashboard/base.html" %}
+{% block title %}WABA Setup Guide — Viviz WhatsApp{% endblock %}
+{% block page_title %}WABA Setup Guide{% endblock %}
+
+{% block header_actions %}
+<a href="/settings" class="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1.5">
+  <i class="fas fa-arrow-left"></i> <span class="hidden sm:inline">Back to Settings</span>
+</a>
+{% endblock %}
+
+{% block content %}
+<style>
+  .md-content { color: #374151; line-height: 1.7; }
+  .md-content h1 { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0 0 1rem; }
+  .md-content h2 { font-size: 1.2rem; font-weight: 700; color: #111827; margin: 2rem 0 0.75rem; padding-top: 1rem; border-top: 1px solid #f3f4f6; }
+  .md-content h2:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+  .md-content h3 { font-size: 1rem; font-weight: 600; color: #1f2937; margin: 1.5rem 0 0.5rem; }
+  .md-content p { margin: 0 0 0.85rem; font-size: 0.9rem; }
+  .md-content ul, .md-content ol { margin: 0 0 0.85rem; padding-left: 1.4rem; font-size: 0.9rem; }
+  .md-content li { margin-bottom: 0.3rem; }
+  .md-content li > ul, .md-content li > ol { margin-top: 0.3rem; }
+  .md-content code { background: #f3f4f6; color: #b91c1c; padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.82rem; }
+  .md-content pre { background: #111827; color: #e5e7eb; padding: 0.9rem 1rem; border-radius: 10px; overflow-x: auto; margin: 0 0 1rem; font-size: 0.82rem; }
+  .md-content pre code { background: transparent; color: inherit; padding: 0; }
+  .md-content table { width: 100%; border-collapse: collapse; margin: 0 0 1.25rem; font-size: 0.85rem; }
+  .md-content th { text-align: left; background: #f9fafb; color: #6b7280; text-transform: uppercase; font-size: 0.7rem; padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e7eb; }
+  .md-content td { padding: 0.55rem 0.75rem; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+  .md-content a { color: #075E54; text-decoration: underline; text-underline-offset: 2px; }
+  .md-content strong { color: #111827; font-weight: 600; }
+</style>
+
+<div class="max-w-3xl mx-auto bg-white rounded-xl border border-gray-100 shadow-sm p-6 md:p-8">
+  <div class="md-content">
+    {{ content_html | safe }}
+  </div>
+</div>
+{% endblock %}

@@ -56,6 +56,8 @@
       ("/mm-lite", "fa-rocket", "MM Lite", "mm_lite"),
       ("/leads", "fa-user-plus", "Leads", "leads"),
       ("/webhook/logs", "fa-stream", "Webhook Logs", "webhook_logs"),
+      ("/compliance/audit-logs", "fa-shield-alt", "Audit Trail", "audit_logs"),
+      ("/settings", "fa-cog", "Settings", "settings"),
     ] %}
     {% for href, icon, label, pg in nav_items %}
     <a href="{{ href }}" @click="sidebarOpen = false"

@@ -11,6 +11,8 @@ from app.models.campaign_flow import CampaignFlow, CampaignFlowStep, CampaignFlo
 from app.models.link_tracker import TrackedLink, LinkClick
 from app.models.mm_lite import MMLiteOnboarding
 from app.models.lead import Lead
+from app.models.audit import AuditLog
+from app.models.setting import AppSetting
 
 __all__ = [
     "Contact", "Conversation", "Message", "MessageTemplate",
@@ -18,5 +20,5 @@ __all__ = [
     "DripCampaign", "DripStep", "DripEnrollment",
     "CampaignFlow", "CampaignFlowStep", "CampaignFlowState",
     "TrackedLink", "LinkClick",
-    "MMLiteOnboarding", "Lead",
+    "MMLiteOnboarding", "Lead", "AuditLog", "AppSetting",
 ]

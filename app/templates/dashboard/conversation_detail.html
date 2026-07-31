@@ -61,6 +61,12 @@
 
     <!-- Input -->
     <div class="px-4 py-3 border-t border-gray-100 bg-white">
+      {% if not within_window %}
+      <div class="mb-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 flex items-start gap-2">
+        <i class="fas fa-exclamation-triangle mt-0.5"></i>
+        <span>The 24-hour customer service window is closed. Meta only allows approved template messages now — free-form replies will be rejected until the customer messages again.</span>
+      </div>
+      {% endif %}
       <div id="ai-suggestion" class="hidden mb-2 p-3 bg-purple-50 rounded-lg border border-purple-100">
         <p class="text-xs text-purple-600 font-medium mb-1"><i class="fas fa-robot"></i> AI Suggestion</p>
         <p class="text-sm text-gray-700" id="ai-suggestion-text"></p>
@@ -241,6 +247,10 @@
     if (r.ok) {
       appendMsg(text, 'outbound');
       scrollBottom();
+    } else {
+      const data = await r.json().catch(() => ({}));
+      showToast(data.error || 'Failed to send message');
+      input.value = text;
     }
   }
 
@@ -251,10 +261,12 @@
     const r = await fetch(`/conversations/${convId}/ai-reply`, {method: 'POST'});
     btn.innerHTML = '<i class="fas fa-robot"></i> AI Reply';
     btn.disabled = false;
+    const data = await r.json().catch(() => ({}));
     if (r.ok) {
-      const data = await r.json();
       document.getElementById('ai-suggestion-text').textContent = data.reply;
       document.getElementById('ai-suggestion').classList.remove('hidden');
+    } else {
+      showToast(data.error || 'Failed to generate reply');
     }
   }
 

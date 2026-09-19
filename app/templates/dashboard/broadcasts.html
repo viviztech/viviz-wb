@@ -123,7 +123,7 @@
         </td>
         <td class="px-5 py-3.5">
           <div class="flex gap-1.5 flex-wrap">
-            {% if b.status == 'draft' %}
+            {% if b.status == 'draft' or (b.status == 'failed' and not b.sent_count) %}
             <button onclick="sendBroadcast({{ b.id }}, this)"
               class="text-xs bg-teal-600 text-white px-2.5 py-1 rounded-lg hover:bg-teal-700 whitespace-nowrap">
               <i class="fas fa-paper-plane mr-1"></i>Send
@@ -327,6 +327,19 @@
       <input type="hidden" name="variable_mapping" id="variable_mapping_input" value="{}"/>
       <input type="hidden" name="static_variables" id="static_variables_input" value="{}"/>
 
+      <label class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+        <input type="checkbox" name="compliance_confirmed" value="true" id="compliance-confirmed" class="mt-0.5 rounded border-amber-400"/>
+        <span>I confirm every recipient explicitly consented to this message category; the content matches the approved template purpose, identifies our business, is lawful for the audience, and provides a clear opt-out. I understand delivered messages may be billed by Meta.</span>
+      </label>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Restricted-content declaration</label>
+        <select name="regulated_content" id="regulated-content" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+          <option value="">Select...</option>
+          <option value="none">This campaign does not promote regulated or restricted products/services</option>
+        </select>
+        <p class="mt-1 text-xs text-gray-400">Regulated vertical broadcasts are disabled because they require country, age, licensing, and Meta-specific controls.</p>
+      </div>
+
       <!-- Submit -->
       <div class="flex gap-3 pt-2 border-t border-gray-100">
         <button type="button" onclick="submitCampaign()"
@@ -349,7 +362,7 @@
   <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
     <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
       <h2 class="text-base font-semibold text-gray-800">
-        <i class="fas fa-exclamation-circle text-red-500 mr-2"></i>Failed Recipients
+        <i class="fas fa-exclamation-circle text-red-500 mr-2"></i>Failed / Suppressed Recipients
       </h2>
       <button onclick="document.getElementById('error-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
     </div>
@@ -455,11 +468,19 @@ async function previewCount() {
   const targetMode = document.querySelector('input[name="target_mode"]:checked').value;
   const targetTags = document.getElementById('target_tags_input').value.split(',').filter(Boolean);
   const segFilter = JSON.parse(document.getElementById('segment_filter_input').value || '{}');
+  const tplSel = document.getElementById('sel-template');
+  if (!tplSel || !tplSel.value) { alert('Select an approved template first.'); return; }
 
   const resp = await fetch('/broadcasts/preview-count', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({target_mode: targetMode, target_tags: targetTags, segment_filter: segFilter}),
+    body: JSON.stringify({
+      target_mode: targetMode,
+      target_tags: targetTags,
+      segment_filter: segFilter,
+      template_name: tplSel.value,
+      template_language: document.getElementById('tpl-lang').value,
+    }),
   });
   if (resp.ok) {
     const data = await resp.json();
@@ -492,6 +513,12 @@ async function submitCampaign() {
   const tplSel = document.getElementById('sel-template');
   if (tplSel && !tplSel.value) {
     alert('Please select a template.'); return;
+  }
+  if (!document.getElementById('compliance-confirmed').checked) {
+    alert('Confirm the compliance declaration before creating this campaign.'); return;
+  }
+  if (document.getElementById('regulated-content').value !== 'none') {
+    alert('Complete the restricted-content declaration.'); return;
   }
 
   // Collect variable mapping
@@ -535,7 +562,7 @@ async function submitCampaign() {
 // ── Campaign actions ─────────────────────────────────────────────────────────
 
 async function sendBroadcast(id, btn) {
-  if (!confirm('Send this campaign now to all targeted recipients?')) return;
+  if (!confirm('Send this paid template campaign now? Consent, block status, frequency limits, template approval, and account quality will be checked again before delivery.')) return;
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Starting...';
   const resp = await fetch(`/broadcasts/${id}/send`, {method: 'POST'});
@@ -621,6 +648,7 @@ async function viewDetail(id) {
   const delivered = b.delivered_count || 0;
   const read = b.read_count || 0;
   const failed = b.failed_count || 0;
+  const suppressed = b.suppressed_count || 0;
   const total = b.total_count || 1;
 
   const bar = (val, max, color) => {
@@ -673,6 +701,16 @@ async function viewDetail(id) {
           </div>
         </div>
         ${b.retry_count ? `<p class="text-xs text-gray-400 mt-1">${b.retry_count} retry run(s) performed</p>` : ''}
+      </div>` : ''}
+      ${suppressed ? `<div class="p-3 bg-amber-50 rounded-xl border border-amber-100">
+        <div class="flex justify-between items-center">
+          <span class="text-xs font-medium text-amber-700"><i class="fas fa-shield-alt mr-1"></i>Suppressed by compliance checks</span>
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-bold text-amber-700">${suppressed}</span>
+            <button onclick="viewErrors(${b.id}); document.getElementById('detail-modal').classList.add('hidden')"
+              class="text-xs text-amber-700 underline">View</button>
+          </div>
+        </div>
       </div>` : ''}
     </div>
 

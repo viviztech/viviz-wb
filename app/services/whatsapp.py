@@ -7,7 +7,13 @@ class WhatsAppService:
     """Official Meta WhatsApp Cloud API client."""
 
     def __init__(self):
-        self.headers = {
+        pass
+
+    @property
+    def headers(self) -> dict:
+        # Settings can be rotated from the dashboard; build headers per request
+        # so a newly saved access token takes effect immediately.
+        return {
             "Authorization": f"Bearer {settings.whatsapp_access_token}",
             "Content-Type": "application/json",
         }

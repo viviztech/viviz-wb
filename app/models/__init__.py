@@ -13,6 +13,7 @@ from app.models.mm_lite import MMLiteOnboarding
 from app.models.lead import Lead
 from app.models.audit import AuditLog
 from app.models.setting import AppSetting
+from app.models.consent import ConsentEvent
 
 __all__ = [
     "Contact", "Conversation", "Message", "MessageTemplate",
@@ -20,5 +21,5 @@ __all__ = [
     "DripCampaign", "DripStep", "DripEnrollment",
     "CampaignFlow", "CampaignFlowStep", "CampaignFlowState",
     "TrackedLink", "LinkClick",
-    "MMLiteOnboarding", "Lead", "AuditLog", "AppSetting",
+    "MMLiteOnboarding", "Lead", "AuditLog", "AppSetting", "ConsentEvent",
 ]

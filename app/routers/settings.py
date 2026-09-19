@@ -64,6 +64,11 @@ def _build_sections() -> list[dict]:
             "icon": "fa-shield-alt",
             "fields": [
                 _field("App URL", "app_url", settings.app_url, editable=True),
+                _field("Customer-facing Business Name", "business_name", settings.business_name, editable=True),
+                _field("Privacy Policy URL", "privacy_policy_url", settings.privacy_policy_url, editable=True),
+                _field("Support Email", "support_email", settings.support_email, editable=True),
+                _field("Support Phone", "support_phone", settings.support_phone, editable=True),
+                _field("WhatsApp Business Phone", "whatsapp_business_phone", settings.whatsapp_business_phone, editable=True),
                 _field(
                     "Secret Key", "secret_key", settings.secret_key, secret=True,
                     insecure="secret_key" in insecure,

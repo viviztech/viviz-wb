@@ -14,6 +14,7 @@ from app.config import settings, check_insecure_defaults
 from app.database import init_db, AsyncSessionLocal
 from app.services.auth import ensure_admin_exists
 from app.services.app_settings import load_overrides
+from app.services.consent import reconcile_legacy_marketing_flags
 from app.routers import webhook, auth, dashboard, conversations, contacts, broadcasts, templates, api, quick_replies, analytics, auto_replies, optin, mm_lite, compliance, settings as settings_router
 import app.models  # ensure all models imported for init_db
 from app.scheduler import start_scheduler, stop_scheduler
@@ -45,6 +46,7 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as db:
         await load_overrides(db)
         await ensure_admin_exists(db)
+        await reconcile_legacy_marketing_flags(db)
     logger.info("Database initialized. Admin user ensured.")
 
     insecure = check_insecure_defaults(settings)

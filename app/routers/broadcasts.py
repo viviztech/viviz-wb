@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, func
+from sqlalchemy import select, desc, func, update
 from datetime import datetime
 from typing import Optional
 import asyncio
@@ -15,6 +15,12 @@ from app.models.contact import Contact
 from app.models.template import MessageTemplate
 from app.services.whatsapp import whatsapp
 from app.services.audit import log_event
+from app.services.consent import (
+    eligible_contact_ids,
+    has_active_consent,
+    marketing_frequency_allowed,
+    validate_broadcast_template,
+)
 
 router = APIRouter(prefix="/broadcasts", tags=["broadcasts"])
 templates = Jinja2Templates(directory="app/templates")
@@ -131,15 +137,32 @@ async def preview_count(request: Request, db: AsyncSession = Depends(get_db)):
     target_mode = data.get("target_mode", "all")
     target_tags = data.get("target_tags", [])
     segment_filter = data.get("segment_filter", {})
+    template_name = data.get("template_name", "")
+    template_language = data.get("template_language", "en")
+
+    try:
+        template = await validate_broadcast_template(db, template_name, template_language)
+    except ValueError as ex:
+        return JSONResponse({"error": str(ex)}, status_code=400)
+    category = template.category.lower()
+    consent_ids = await eligible_contact_ids(db, category)
+    if not consent_ids:
+        return JSONResponse({"count": 0})
 
     contacts = (await db.execute(
-        select(Contact).where(Contact.is_opted_in == True, Contact.is_blocked == False)
+        select(Contact).where(Contact.id.in_(consent_ids), Contact.is_blocked == False)
     )).scalars().all()
 
     if target_mode == "tags" and target_tags:
         contacts = [c for c in contacts if any(t in (c.tags or []) for t in target_tags)]
     elif target_mode == "segment":
         contacts = _filter_contacts_by_segment(contacts, segment_filter)
+
+    if category == "marketing":
+        contacts = [
+            c for c in contacts
+            if await marketing_frequency_allowed(db, c.id)
+        ]
 
     return JSONResponse({"count": len(contacts)})
 
@@ -156,10 +179,29 @@ async def create_broadcast(
     variable_mapping: str = Form("{}"),
     static_variables: str = Form("{}"),
     scheduled_at: str = Form(""),
+    compliance_confirmed: str = Form("false"),
+    regulated_content: str = Form(""),
     db: AsyncSession = Depends(get_db),
 ):
     if not _auth(request):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    if compliance_confirmed.lower() != "true":
+        return JSONResponse({
+            "error": "Confirm consent, audience, content, privacy, and opt-out compliance before creating the campaign"
+        }, status_code=400)
+    if regulated_content != "none":
+        return JSONResponse({
+            "error": "This platform does not support broadcasts for regulated or restricted products/services"
+        }, status_code=400)
+
+    try:
+        template = await validate_broadcast_template(db, template_name, template_language)
+    except ValueError as ex:
+        return JSONResponse({"error": str(ex)}, status_code=400)
+    category = template.category.lower()
+
+    if target_mode not in {"all", "tags", "segment"}:
+        return JSONResponse({"error": "Invalid target mode"}, status_code=400)
 
     tag_list = [t.strip() for t in target_tags.split(",") if t.strip()]
 
@@ -170,17 +212,30 @@ async def create_broadcast(
     except json.JSONDecodeError:
         return JSONResponse({"error": "Invalid JSON in variables or segment"}, status_code=400)
 
-    contacts = (await db.execute(
-        select(Contact).where(Contact.is_opted_in == True, Contact.is_blocked == False)
-    )).scalars().all()
+    consent_ids = await eligible_contact_ids(db, category)
+    contacts = []
+    if consent_ids:
+        contacts = (await db.execute(
+            select(Contact).where(Contact.id.in_(consent_ids), Contact.is_blocked == False)
+        )).scalars().all()
 
     if target_mode == "tags" and tag_list:
         contacts = [c for c in contacts if any(t in (c.tags or []) for t in tag_list)]
+    elif target_mode == "tags":
+        return JSONResponse({"error": "Select at least one target tag"}, status_code=400)
     elif target_mode == "segment":
         contacts = _filter_contacts_by_segment(contacts, seg_filter)
 
+    if category == "marketing":
+        contacts = [
+            c for c in contacts
+            if await marketing_frequency_allowed(db, c.id)
+        ]
+
     if not contacts:
-        return JSONResponse({"error": "No eligible opted-in contacts found for this targeting"}, status_code=400)
+        return JSONResponse({
+            "error": f"No contacts have active {category} consent and pass suppression/frequency rules"
+        }, status_code=400)
 
     scheduled_dt = None
     status = "draft"
@@ -215,6 +270,21 @@ async def create_broadcast(
             contact_id=contact.id,
             resolved_variables=resolved,
         ))
+
+    await log_event(
+        db,
+        actor=request.session.get("admin_email", "admin"),
+        action="broadcast_compliance_attested",
+        target_type="broadcast",
+        target_id=broadcast.id,
+        meta={
+            "template": template.name,
+            "template_category": template.category,
+            "recipient_count": len(contacts),
+            "target_mode": target_mode,
+            "regulated_content": regulated_content,
+        },
+    )
 
     await db.commit()
     return JSONResponse({
@@ -261,6 +331,12 @@ async def broadcast_detail(broadcast_id: int, request: Request, db: AsyncSession
     delivered = b.delivered_count or 0
     read = b.read_count or 0
     failed = b.failed_count or 0
+    suppressed = (await db.execute(
+        select(func.count(BroadcastRecipient.id)).where(
+            BroadcastRecipient.broadcast_id == broadcast_id,
+            BroadcastRecipient.status == "suppressed",
+        )
+    )).scalar() or 0
 
     return JSONResponse({
         "id": b.id,
@@ -272,6 +348,7 @@ async def broadcast_detail(broadcast_id: int, request: Request, db: AsyncSession
         "delivered_count": delivered,
         "read_count": read,
         "failed_count": failed,
+        "suppressed_count": suppressed,
         "retry_count": b.retry_count or 0,
         "delivery_rate": round(delivered / sent * 100, 1) if sent > 0 else 0,
         "read_rate": round(read / delivered * 100, 1) if delivered > 0 else 0,
@@ -293,7 +370,10 @@ async def broadcast_failures(broadcast_id: int, request: Request, db: AsyncSessi
     failures = (await db.execute(
         select(BroadcastRecipient, Contact)
         .join(Contact, BroadcastRecipient.contact_id == Contact.id)
-        .where(BroadcastRecipient.broadcast_id == broadcast_id, BroadcastRecipient.status == "failed")
+        .where(
+            BroadcastRecipient.broadcast_id == broadcast_id,
+            BroadcastRecipient.status.in_(["failed", "suppressed"]),
+        )
     )).all()
     return JSONResponse([
         {
@@ -301,6 +381,7 @@ async def broadcast_failures(broadcast_id: int, request: Request, db: AsyncSessi
             "name": c.name or c.profile_name or "",
             "error": r.error_message or "Unknown error",
             "retries": r.retry_attempts or 0,
+            "status": r.status,
         }
         for r, c in failures
     ])
@@ -314,11 +395,26 @@ async def send_broadcast(broadcast_id: int, request: Request, db: AsyncSession =
     broadcast = (await db.execute(select(Broadcast).where(Broadcast.id == broadcast_id))).scalar_one_or_none()
     if not broadcast:
         raise HTTPException(404, "Not found")
-    if broadcast.status not in ("draft", "scheduled"):
+    if broadcast.status not in ("draft", "scheduled", "failed"):
         return JSONResponse({"error": "Already sent or running"}, status_code=400)
 
-    broadcast.status = "running"
-    broadcast.started_at = datetime.utcnow()
+    try:
+        await validate_broadcast_template(
+            db, broadcast.template_name, broadcast.template_language or "en"
+        )
+        await _assert_account_quality()
+    except ValueError as ex:
+        return JSONResponse({"error": str(ex)}, status_code=409)
+
+    started_at = datetime.utcnow()
+    claim = await db.execute(
+        update(Broadcast)
+        .where(Broadcast.id == broadcast_id, Broadcast.status.in_(["draft", "scheduled", "failed"]))
+        .values(status="running", started_at=started_at)
+    )
+    if claim.rowcount != 1:
+        await db.rollback()
+        return JSONResponse({"error": "Campaign was already claimed by another worker"}, status_code=409)
     await log_event(db, actor=request.session.get("admin_email", "admin"), action="broadcast_send",
                      target_type="broadcast", target_id=broadcast.id,
                      meta={"name": broadcast.name, "template": broadcast.template_name,
@@ -355,9 +451,18 @@ async def retry_failed(broadcast_id: int, request: Request, db: AsyncSession = D
     for r in failed_recipients:
         r.status = "pending"
 
-    broadcast.status = "running"
-    broadcast.started_at = datetime.utcnow()
-    broadcast.retry_count = (broadcast.retry_count or 0) + 1
+    claim = await db.execute(
+        update(Broadcast)
+        .where(Broadcast.id == broadcast_id, Broadcast.status != "running")
+        .values(
+            status="running",
+            started_at=datetime.utcnow(),
+            retry_count=func.coalesce(Broadcast.retry_count, 0) + 1,
+        )
+    )
+    if claim.rowcount != 1:
+        await db.rollback()
+        return JSONResponse({"error": "Campaign was already claimed by another worker"}, status_code=409)
     await db.commit()
 
     asyncio.create_task(_send_broadcast_messages(broadcast_id))
@@ -434,6 +539,18 @@ async def _send_broadcast_messages(broadcast_id: int):
         if not broadcast:
             return
 
+        try:
+            template = await validate_broadcast_template(
+                db, broadcast.template_name, broadcast.template_language or "en"
+            )
+            quality = await _assert_account_quality()
+        except ValueError as ex:
+            broadcast.status = "failed"
+            logger.error(f"Broadcast {broadcast_id} blocked by compliance preflight: {ex}")
+            await db.commit()
+            return
+        consent_category = template.category.lower()
+
         recipients = (await db.execute(
             select(BroadcastRecipient).where(
                 BroadcastRecipient.broadcast_id == broadcast_id,
@@ -455,6 +572,9 @@ async def _send_broadcast_messages(broadcast_id: int):
             )
         )).scalar() or 0
         delay = 1.0 / SEND_RATE_PER_SEC
+        if quality == "YELLOW":
+            # Reduce campaign velocity while Meta reports degraded quality.
+            delay = 1.0
 
         # Determine whether to route through MM Lite for this broadcast
         use_mm_lite = (
@@ -471,6 +591,26 @@ async def _send_broadcast_messages(broadcast_id: int):
                 recipient.error_message = "Contact not found"
                 failed += 1
                 await db.commit()
+                continue
+
+            # Consent and suppression are checked at delivery time, not only when
+            # the campaign was created. This makes STOP/block requests effective
+            # for already-scheduled campaigns.
+            suppression_reason = None
+            if contact.is_blocked:
+                suppression_reason = "Suppressed: contact is blocked"
+            elif not await has_active_consent(db, contact.id, consent_category):
+                suppression_reason = f"Suppressed: no active {consent_category} consent"
+            elif consent_category == "marketing" and not await marketing_frequency_allowed(
+                db, contact.id, exclude_broadcast_id=broadcast_id
+            ):
+                suppression_reason = "Suppressed: marketing frequency cap reached"
+
+            if suppression_reason:
+                recipient.status = "suppressed"
+                recipient.error_message = suppression_reason
+                await db.commit()
+                logger.info(f"Broadcast {broadcast_id}: {suppression_reason} for contact {contact.id}")
                 continue
 
             components = _build_components(recipient.resolved_variables or {})
@@ -538,8 +678,40 @@ async def _send_broadcast_messages(broadcast_id: int):
 
         broadcast.status = "completed"
         broadcast.completed_at = datetime.utcnow()
+        suppressed = (await db.execute(
+            select(func.count(BroadcastRecipient.id)).where(
+                BroadcastRecipient.broadcast_id == broadcast_id,
+                BroadcastRecipient.status == "suppressed",
+            )
+        )).scalar() or 0
+        await log_event(
+            db, actor="system", action="broadcast_completed",
+            target_type="broadcast", target_id=broadcast_id,
+            meta={"sent": sent, "failed": failed, "suppressed": suppressed},
+        )
         await db.commit()
-        logger.info(f"Broadcast {broadcast_id} completed: {sent} sent, {failed} failed")
+        logger.info(
+            f"Broadcast {broadcast_id} completed: {sent} sent, {failed} failed, "
+            f"{suppressed} suppressed"
+        )
+
+
+async def _assert_account_quality() -> str:
+    """Block new campaigns if Meta reports a RED phone-number quality rating."""
+    try:
+        data = await whatsapp.get_phone_numbers()
+    except Exception as ex:
+        raise ValueError(f"Could not verify WhatsApp account quality: {ex}") from ex
+
+    from app.config import settings
+    phone_id = settings.whatsapp_phone_number_id
+    matching = next((p for p in data.get("data", []) if str(p.get("id")) == str(phone_id)), None)
+    if not matching:
+        raise ValueError("Configured WhatsApp phone number was not found in the WABA")
+    quality = str(matching.get("quality_rating") or "UNKNOWN").upper()
+    if quality == "RED":
+        raise ValueError("Broadcast blocked because Meta reports a RED quality rating")
+    return quality
 
 
 def _extract_meta_error(ex: Exception) -> str:

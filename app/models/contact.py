@@ -15,7 +15,9 @@ class Contact(Base):
     email = Column(String(200), nullable=True)
     tags = Column(JSON, default=list)
     notes = Column(Text, nullable=True)
-    is_opted_in = Column(Boolean, default=True)
+    # Legacy summary flag for marketing consent. Authorization is determined
+    # from the append-only consent_events table and defaults fail-closed.
+    is_opted_in = Column(Boolean, default=False)
     opt_in_source = Column(String(50), nullable=True)  # whatsapp_inbound, keyword_start, manual_admin, csv_import
     opt_in_at = Column(DateTime, nullable=True)
     opt_out_at = Column(DateTime, nullable=True)

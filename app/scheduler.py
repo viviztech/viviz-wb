@@ -1,6 +1,6 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from sqlalchemy import select
+from sqlalchemy import select, update
 from datetime import datetime, timezone
 import logging
 
@@ -25,9 +25,14 @@ async def _dispatch_scheduled_broadcasts():
         )
         due = result.scalars().all()
         for broadcast in due:
-            broadcast.status = "running"
-            broadcast.started_at = now
+            claim = await db.execute(
+                update(Broadcast)
+                .where(Broadcast.id == broadcast.id, Broadcast.status == "scheduled")
+                .values(status="running", started_at=now)
+            )
             await db.commit()
+            if claim.rowcount != 1:
+                continue
             asyncio.create_task(_send_broadcast_messages(broadcast.id))
             logger.info(f"Scheduled broadcast {broadcast.id} '{broadcast.name}' started")
 

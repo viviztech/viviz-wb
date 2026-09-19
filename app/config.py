@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     # App
     app_name: str = "Viviz WhatsApp Business"
+    business_name: str = "Viviz Technologies"
     app_url: str = "http://localhost:8000"
     secret_key: str = "change_this_secret_key_minimum_32_characters"
     api_key: str = ""
@@ -20,6 +21,11 @@ class Settings(BaseSettings):
     admin_password: str = "Admin@1234"
     debug: bool = False
     allowed_origins: str = "https://wb.viviz.in"
+    privacy_policy_url: str = ""
+    support_email: str = ""
+    support_phone: str = ""
+    whatsapp_business_phone: str = ""
+    marketing_max_messages_per_7_days: int = 2
 
     # Database
     database_url: str = "sqlite+aiosqlite:///./whatsapp.db"
@@ -69,6 +75,11 @@ EDITABLE_SETTINGS = [
     "meta_app_id",
     "meta_app_secret",
     "app_url",
+    "business_name",
+    "privacy_policy_url",
+    "support_email",
+    "support_phone",
+    "whatsapp_business_phone",
     "anthropic_api_key",
     "aws_access_key_id",
     "aws_secret_access_key",

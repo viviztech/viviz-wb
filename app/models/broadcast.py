@@ -47,7 +47,7 @@ class BroadcastRecipient(Base):
     wa_message_id = Column(String(100), nullable=True, index=True)
     # per-recipient resolved variables {"1": "Rajan", "2": "Chennai"}
     resolved_variables = Column(JSON, default=dict)
-    status = Column(String(20), default="pending")  # pending, sent, delivered, read, failed, retry
+    status = Column(String(20), default="pending")  # pending, sent, delivered, read, failed, suppressed, retry
     error_message = Column(Text, nullable=True)
     retry_attempts = Column(Integer, default=0)
     sent_at = Column(DateTime, nullable=True)

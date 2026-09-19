@@ -34,6 +34,7 @@ async def templates_list(request: Request, db: AsyncSession = Depends(get_db)):
                 body_comp = comp.get("BODY", {})
                 header_comp = comp.get("HEADER", {})
                 footer_comp = comp.get("FOOTER", {})
+                buttons_comp = comp.get("BUTTONS", {})
                 tpl = MessageTemplate(
                     name=t.get("name"),
                     language=t.get("language", "en"),
@@ -44,10 +45,19 @@ async def templates_list(request: Request, db: AsyncSession = Depends(get_db)):
                     header_content=header_comp.get("text"),
                     body=body_comp.get("text", ""),
                     footer=footer_comp.get("text"),
+                    buttons=buttons_comp.get("buttons", []),
                 )
                 db.add(tpl)
             else:
                 existing.status = t.get("status", existing.status)
+                existing.category = t.get("category", existing.category)
+                existing.language = t.get("language", existing.language)
+                comp = {c["type"]: c for c in t.get("components", [])}
+                if comp.get("BODY"):
+                    existing.body = comp["BODY"].get("text", existing.body)
+                if comp.get("FOOTER"):
+                    existing.footer = comp["FOOTER"].get("text", existing.footer)
+                existing.buttons = comp.get("BUTTONS", {}).get("buttons", existing.buttons or [])
                 if t.get("id") and not existing.wa_template_id:
                     existing.wa_template_id = t.get("id")
         await db.commit()
@@ -79,6 +89,16 @@ async def create_template(
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
     clean_name = name.lower().replace(" ", "_")
+    category = category.upper()
+    if category not in {"MARKETING", "UTILITY", "AUTHENTICATION"}:
+        return JSONResponse({"error": "Invalid template category"}, status_code=400)
+    if category == "MARKETING":
+        if not footer:
+            footer = "Reply STOP MARKETING to opt out."
+        elif not any(term in footer.lower() for term in ("stop", "unsubscribe", "opt out", "opt-out")):
+            return JSONResponse({
+                "error": "Marketing template footer must explain how to opt out (for example: Reply STOP MARKETING)."
+            }, status_code=400)
 
     existing = (await db.execute(
         select(MessageTemplate).where(MessageTemplate.name == clean_name)

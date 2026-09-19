@@ -5,10 +5,11 @@ No auth required (it's a public landing page for customers).
 import io
 import base64
 import qrcode
-from fastapi import APIRouter, Request, Query
+from fastapi import APIRouter, Request, Query, HTTPException
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 from app.config import settings
+from app.services.consent import default_disclosure
 
 router = APIRouter(prefix="/optin", tags=["optin"])
 templates = Jinja2Templates(directory="app/templates")
@@ -34,12 +35,15 @@ def _qr_base64(url: str) -> str:
 @router.get("", response_class=HTMLResponse)
 async def optin_page(
     request: Request,
-    phone: str = Query(default=""),
-    message: str = Query(default="Hi! I'd like to know more about your services."),
+    category: str = Query(default="marketing"),
 ):
-    # Use configured phone number if none provided
-    wa_phone = phone or settings.whatsapp_phone_number_id
-    deeplink = _wa_deeplink(wa_phone, message)
+    if category not in {"marketing", "utility"}:
+        raise HTTPException(400, "Category must be marketing or utility")
+    wa_phone = settings.whatsapp_business_phone
+    if not wa_phone:
+        raise HTTPException(503, "WhatsApp business phone is not configured")
+    command = "CONFIRM MARKETING" if category == "marketing" else "CONFIRM UPDATES"
+    deeplink = _wa_deeplink(wa_phone, command)
     qr_img = _qr_base64(deeplink)
 
     return templates.TemplateResponse("optin.html", {
@@ -47,18 +51,26 @@ async def optin_page(
         "deeplink": deeplink,
         "qr_img": qr_img,
         "wa_phone": wa_phone,
-        "pre_message": message,
+        "pre_message": command,
+        "disclosure": default_disclosure(category),
+        "category": category,
+        "privacy_policy_url": settings.privacy_policy_url,
+        "support_email": settings.support_email,
     })
 
 
 @router.get("/qr.png")
 async def qr_image(
-    phone: str = Query(default=""),
-    message: str = Query(default="Hi! I'd like to know more about your services."),
+    category: str = Query(default="marketing"),
 ):
     """Returns raw QR PNG — embed as <img src='/optin/qr.png'> on any page."""
-    wa_phone = phone or settings.whatsapp_phone_number_id
-    deeplink = _wa_deeplink(wa_phone, message)
+    if category not in {"marketing", "utility"}:
+        raise HTTPException(400, "Category must be marketing or utility")
+    wa_phone = settings.whatsapp_business_phone
+    if not wa_phone:
+        raise HTTPException(503, "WhatsApp business phone is not configured")
+    command = "CONFIRM MARKETING" if category == "marketing" else "CONFIRM UPDATES"
+    deeplink = _wa_deeplink(wa_phone, command)
 
     qr = qrcode.QRCode(version=1, box_size=8, border=3,
                        error_correction=qrcode.constants.ERROR_CORRECT_M)

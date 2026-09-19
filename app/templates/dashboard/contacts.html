@@ -152,8 +152,8 @@
     <div class="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-4 text-xs text-blue-700 space-y-1">
       <p class="font-medium">CSV Format:</p>
       <p>Required column: <code class="bg-blue-100 px-1 rounded">phone</code></p>
-      <p>Optional: <code class="bg-blue-100 px-1 rounded">name</code>, <code class="bg-blue-100 px-1 rounded">email</code>, <code class="bg-blue-100 px-1 rounded">tags</code> (semicolon-separated), <code class="bg-blue-100 px-1 rounded">notes</code></p>
-      <p>Example: <code class="bg-blue-100 px-1 rounded">919876543210,John,john@co.in,vip;customer,VIP client</code></p>
+      <p>Optional: <code class="bg-blue-100 px-1 rounded">name</code>, <code class="bg-blue-100 px-1 rounded">email</code>, <code class="bg-blue-100 px-1 rounded">tags</code>, <code class="bg-blue-100 px-1 rounded">notes</code>.</p>
+      <p>Marketing consent requires <code class="bg-blue-100 px-1 rounded">marketing_opt_in=yes</code>, <code class="bg-blue-100 px-1 rounded">consent_evidence</code>, <code class="bg-blue-100 px-1 rounded">consent_disclosure</code>, and ISO <code class="bg-blue-100 px-1 rounded">consent_at</code>. Add <code class="bg-blue-100 px-1 rounded">consent_proof_reference</code> when available. Incomplete rows are imported as not opted in.</p>
     </div>
     <form id="import-form" class="space-y-4">
       <div>
@@ -211,7 +211,26 @@
       <div class="flex items-center gap-3">
         <input type="checkbox" id="edit-opted-in" name="is_opted_in" value="true"
           class="h-4 w-4 text-teal-600 rounded border-gray-300 focus:ring-teal-500"/>
-        <label for="edit-opted-in" class="text-sm text-gray-700 cursor-pointer">Opted in to receive messages</label>
+        <label for="edit-opted-in" class="text-sm text-gray-700 cursor-pointer">Verified marketing consent</label>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Consent evidence (required when enabling)</label>
+        <textarea id="edit-consent-evidence" rows="2" placeholder="Where, when, and what the customer agreed to"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"></textarea>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Proof reference</label>
+        <input id="edit-consent-proof" type="text" placeholder="Form submission ID, CRM URL, or document reference"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Exact disclosure shown to the customer</label>
+        <textarea id="edit-consent-disclosure" rows="2" placeholder="I agree to receive... from Viviz Technologies on WhatsApp..."
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"></textarea>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Consent obtained at</label>
+        <input id="edit-consent-at" type="datetime-local" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/>
       </div>
       <p id="edit-error" class="text-xs text-red-500 hidden"></p>
       <div class="flex gap-2">
@@ -263,6 +282,29 @@
         <label class="block text-xs font-medium text-gray-600 mb-1">Notes</label>
         <textarea name="notes" rows="2" placeholder="Internal notes..."
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none"></textarea>
+      </div>
+      <label class="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+        <input type="checkbox" name="marketing_consent_confirmed" value="true" class="mt-0.5 rounded"/>
+        <span class="text-xs text-amber-900">This person explicitly agreed to receive marketing offers from the configured business on WhatsApp.</span>
+      </label>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Consent evidence</label>
+        <textarea name="consent_evidence" rows="2" placeholder="Exact source/date/wording or a concise record of the proof"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"></textarea>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Proof reference</label>
+        <input name="consent_proof_reference" type="text" placeholder="Form submission ID, CRM URL, or document reference"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Exact disclosure shown to the customer</label>
+        <textarea name="consent_disclosure_text" rows="2" placeholder="I agree to receive... from Viviz Technologies on WhatsApp..."
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"></textarea>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Consent obtained at</label>
+        <input name="consent_obtained_at" type="datetime-local" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/>
       </div>
       <p id="add-error" class="text-xs text-red-500 hidden"></p>
       <button type="button" onclick="addContact()" class="w-full bg-teal-600 hover:bg-teal-700 text-white py-2.5 rounded-lg text-sm font-medium">
@@ -344,6 +386,10 @@
     document.getElementById('edit-tags').value = btn.dataset.tags;
     document.getElementById('edit-notes').value = btn.dataset.notes;
     document.getElementById('edit-opted-in').checked = btn.dataset.opted === 'true';
+    document.getElementById('edit-consent-evidence').value = '';
+    document.getElementById('edit-consent-proof').value = '';
+    document.getElementById('edit-consent-disclosure').value = '';
+    document.getElementById('edit-consent-at').value = '';
     document.getElementById('edit-error').classList.add('hidden');
     document.getElementById('edit-modal').classList.remove('hidden');
   });
@@ -356,6 +402,10 @@
     fd.append('tags', document.getElementById('edit-tags').value);
     fd.append('notes', document.getElementById('edit-notes').value);
     fd.append('is_opted_in', document.getElementById('edit-opted-in').checked);
+    fd.append('consent_evidence', document.getElementById('edit-consent-evidence').value);
+    fd.append('consent_proof_reference', document.getElementById('edit-consent-proof').value);
+    fd.append('consent_disclosure_text', document.getElementById('edit-consent-disclosure').value);
+    fd.append('consent_obtained_at', document.getElementById('edit-consent-at').value);
     const errEl = document.getElementById('edit-error');
 
     const r = await fetch(`/contacts/${id}/update`, {method: 'POST', body: fd});

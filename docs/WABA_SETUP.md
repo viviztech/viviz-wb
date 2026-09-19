@@ -105,3 +105,31 @@ startup, on top of whatever is in `.env`.
   broadcasts.
 - Double-check `DEBUG=false`, real `SECRET_KEY`/`ADMIN_PASSWORD` in `.env`, and that **Meta App
   Secret** is set on `/settings` so webhook signatures are verified.
+
+## 8. Consent and broadcast compliance
+
+Configure the customer-facing business name, published privacy-policy URL, support email or phone,
+and actual WhatsApp business phone number on `/settings` before creating broadcasts. The actual phone
+number is used for opt-in links; it is different from Meta's Phone Number ID.
+
+The platform fails closed for broadcasts:
+
+- A normal inbound support message does **not** grant marketing consent.
+- Manual and CSV consent must include the exact disclosure, when consent was obtained, and evidence.
+- Consent is category-specific. `CONFIRM MARKETING` grants marketing consent; `CONFIRM UPDATES`
+  grants utility-message consent.
+- `STOP` revokes every category. `STOP MARKETING` and `STOP UPDATES` revoke one category.
+- Consent, block status, template approval, frequency limits, and Meta phone quality are checked again
+  immediately before delivery, including for scheduled campaigns.
+- Marketing templates must contain clear STOP/opt-out wording or an opt-out button.
+- Regulated/restricted-product broadcasts are disabled; enabling them requires a separate implementation
+  for country, age, licensing, and Meta permission controls.
+
+CSV contacts may include `marketing_opt_in=yes`, but the grant is accepted only when the row also
+contains `consent_evidence`, `consent_disclosure`, and an ISO-formatted `consent_at`. An optional
+`consent_proof_reference` can point to the source form or CRM record. Imported contacts without this
+evidence remain in the CRM but cannot receive broadcasts.
+
+These technical controls do not replace review of campaign content, the published privacy policy,
+the Meta Business profile, regulated-industry restrictions, or applicable local law. The operator must
+complete the compliance declaration for each campaign.

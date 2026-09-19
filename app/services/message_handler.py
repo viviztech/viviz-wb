@@ -7,6 +7,8 @@ from app.models.webhook import WebhookLog
 from app.services.whatsapp import whatsapp
 from app.services.media import upload_media_to_s3
 from app.services.audit import log_event
+from app.services.consent import default_disclosure, record_consent, revoke_all_consents
+from app.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -87,7 +89,8 @@ async def _handle_incoming_message(msg: dict, contact_map: dict, db: AsyncSessio
         now = datetime.utcnow()
         contact = Contact(
             phone=from_phone, wa_id=from_phone, profile_name=profile_name,
-            is_opted_in=True, opt_in_source="whatsapp_inbound", opt_in_at=now,
+            # Starting a support conversation is not consent to future marketing.
+            is_opted_in=False,
         )
         db.add(contact)
         await db.flush()
@@ -154,7 +157,7 @@ async def _handle_incoming_message(msg: dict, contact_map: dict, db: AsyncSessio
     # Opt-out / unsubscribe handling — must run before auto-replies
     if content and msg_type == "text":
         opted_out = await _check_optout(content, contact, from_phone, db)
-        if not opted_out:
+        if not opted_out and not contact.is_blocked:
             await _check_auto_reply(content, from_phone, conversation.id, db)
 
     # Log webhook
@@ -261,7 +264,13 @@ async def _handle_status_update(status: dict, db: AsyncSession):
 
 
 _OPT_OUT_KEYWORDS = {"stop", "unsubscribe", "optout", "opt out", "opt-out", "cancel", "remove me", "no more"}
-_OPT_IN_KEYWORDS = {"start", "subscribe", "optin", "opt in", "opt-in", "yes"}
+_MARKETING_OPT_OUT_KEYWORDS = {"stop marketing", "stop offers", "unsubscribe marketing", "unsubscribe offers"}
+_UTILITY_OPT_OUT_KEYWORDS = {"stop updates", "unsubscribe updates"}
+_MARKETING_CONSENT_REQUESTS = {"start marketing", "start offers", "subscribe marketing", "subscribe offers"}
+_UTILITY_CONSENT_REQUESTS = {"start updates", "subscribe updates"}
+_MARKETING_OPT_IN_KEYWORDS = {"confirm marketing", "confirm offers"}
+_UTILITY_OPT_IN_KEYWORDS = {"confirm updates"}
+_GENERIC_OPT_IN_KEYWORDS = {"start", "subscribe", "optin", "opt in", "opt-in"}
 
 
 async def _check_optout(text: str, contact: Contact, to_phone: str, db: AsyncSession) -> bool:
@@ -273,38 +282,80 @@ async def _check_optout(text: str, contact: Contact, to_phone: str, db: AsyncSes
     lower = text.strip().lower()
 
     if lower in _OPT_OUT_KEYWORDS:
-        if contact.is_opted_in:
-            contact.is_opted_in = False
-            contact.opt_out_at = datetime.utcnow()
-            logger.info(f"Contact {to_phone} opted out via keyword: {text!r}")
-            await log_event(db, actor="system", action="opt_out", target_type="contact",
-                             target_id=contact.id, meta={"keyword": text, "phone": to_phone})
-            try:
-                await whatsapp.send_text(
-                    to_phone,
-                    "You have been unsubscribed from our messages. "
-                    "Reply START anytime to subscribe again.",
-                )
-            except Exception as ex:
-                logger.warning(f"Could not send opt-out confirmation to {to_phone}: {ex}")
+        await revoke_all_consents(
+            db, contact, "keyword", f"Inbound WhatsApp command: {text}", "system"
+        )
+        contact.is_opted_in = False
+        contact.is_blocked = True
+        contact.opt_out_at = datetime.utcnow()
+        logger.info(f"Contact {to_phone} opted out of all categories via keyword")
+        try:
+            await whatsapp.send_text(
+                to_phone,
+                f"You have been unsubscribed from all {settings.business_name} WhatsApp messages. "
+                "Reply START MARKETING for offers or START UPDATES for service updates.",
+            )
+        except Exception as ex:
+            logger.warning(f"Could not send opt-out confirmation to {to_phone}: {ex}")
         return True
 
-    if lower in _OPT_IN_KEYWORDS:
-        if not contact.is_opted_in:
-            contact.is_opted_in = True
-            contact.opt_in_source = "keyword_start"
-            contact.opt_in_at = datetime.utcnow()
-            logger.info(f"Contact {to_phone} opted in via keyword: {text!r}")
-            await log_event(db, actor="system", action="opt_in", target_type="contact",
-                             target_id=contact.id, meta={"keyword": text, "phone": to_phone})
-            try:
-                await whatsapp.send_text(
-                    to_phone,
-                    "You have been subscribed to our messages. "
-                    "Reply STOP anytime to unsubscribe.",
-                )
-            except Exception as ex:
-                logger.warning(f"Could not send opt-in confirmation to {to_phone}: {ex}")
+    category = None
+    action = None
+    if lower in _MARKETING_OPT_OUT_KEYWORDS:
+        category, action = "marketing", "revoked"
+    elif lower in _UTILITY_OPT_OUT_KEYWORDS:
+        category, action = "utility", "revoked"
+    elif lower in _MARKETING_OPT_IN_KEYWORDS:
+        category, action = "marketing", "granted"
+    elif lower in _UTILITY_OPT_IN_KEYWORDS:
+        category, action = "utility", "granted"
+
+    if category and action:
+        await record_consent(
+            db, contact, category, action, "keyword_whatsapp",
+            f"Inbound WhatsApp command: {text}", "system",
+        )
+        if action == "granted":
+            contact.is_blocked = False
+        try:
+            label = "promotional offers" if category == "marketing" else "service updates"
+            state = "subscribed to" if action == "granted" else "unsubscribed from"
+            await whatsapp.send_text(
+                to_phone,
+                f"You are now {state} {settings.business_name} {label} on WhatsApp. "
+                f"Reply STOP {category.upper()} to opt out, or STOP to stop everything.",
+            )
+        except Exception as ex:
+            logger.warning(f"Could not send consent confirmation to {to_phone}: {ex}")
+        return True
+
+    if lower in _GENERIC_OPT_IN_KEYWORDS:
+        try:
+            await whatsapp.send_text(
+                to_phone,
+                f"Choose what you want from {settings.business_name}: reply START MARKETING "
+                "for offers, or START UPDATES for order and account updates. "
+                "You can reply STOP at any time.",
+            )
+        except Exception as ex:
+            logger.warning(f"Could not send consent choices to {to_phone}: {ex}")
+        return True
+
+    request_category = None
+    if lower in _MARKETING_CONSENT_REQUESTS:
+        request_category = "marketing"
+    elif lower in _UTILITY_CONSENT_REQUESTS:
+        request_category = "utility"
+    if request_category:
+        confirm_command = "CONFIRM MARKETING" if request_category == "marketing" else "CONFIRM UPDATES"
+        try:
+            await whatsapp.send_text(
+                to_phone,
+                f"{default_disclosure(request_category)} Message frequency varies. "
+                f"Reply {confirm_command} to agree, or STOP to decline.",
+            )
+        except Exception as ex:
+            logger.warning(f"Could not send consent disclosure to {to_phone}: {ex}")
         return True
 
     return False

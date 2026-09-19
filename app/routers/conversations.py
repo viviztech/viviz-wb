@@ -145,6 +145,8 @@ async def send_message(
         }, status_code=409)
 
     contact = (await db.execute(select(Contact).where(Contact.id == conv.contact_id))).scalar_one_or_none()
+    if not contact or contact.is_blocked:
+        return JSONResponse({"error": "Contact is blocked or unavailable"}, status_code=409)
 
     result = await whatsapp.send_text(contact.phone, message)
     wa_msg_id = result.get("messages", [{}])[0].get("id")
@@ -180,6 +182,8 @@ async def ai_reply(conv_id: int, request: Request, db: AsyncSession = Depends(ge
         }, status_code=409)
 
     contact = (await db.execute(select(Contact).where(Contact.id == conv.contact_id))).scalar_one_or_none()
+    if not contact or contact.is_blocked:
+        return JSONResponse({"error": "Contact is blocked or unavailable"}, status_code=409)
     messages = (await db.execute(
         select(Message).where(Message.conversation_id == conv_id).order_by(Message.created_at).limit(20)
     )).scalars().all()

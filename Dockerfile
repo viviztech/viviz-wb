@@ -9,4 +9,6 @@ COPY . .
 
 EXPOSE 8003
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8003", "--workers", "2"]
+# APScheduler runs in-process. A single worker prevents duplicate scheduler
+# instances and keeps broadcast claiming/migrations deterministic.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8003", "--workers", "1"]

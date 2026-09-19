@@ -42,8 +42,17 @@
       </a>
 
       <p class="text-xs text-gray-400 mt-4">
-        Opens WhatsApp with a pre-filled message. Tap send to start the conversation.
+        Opens WhatsApp with a consent command. Consent is recorded only after you tap send.
       </p>
+
+      <div class="mt-4 text-left rounded-xl border border-teal-100 bg-teal-50 p-4">
+        <p class="text-sm font-medium text-teal-900">Your choice</p>
+        <p class="mt-1 text-xs leading-5 text-teal-800">{{ disclosure }}</p>
+        <p class="mt-2 text-xs text-teal-700">Message frequency varies. Standard data charges may apply. Reply STOP {{ category.upper() }} to stop these messages, or STOP to stop all messages.</p>
+        {% if privacy_policy_url %}
+        <a href="{{ privacy_policy_url }}" target="_blank" rel="noopener" class="mt-2 inline-block text-xs font-medium text-teal-700 underline">Privacy policy</a>
+        {% endif %}
+      </div>
 
       <!-- Pre-filled message preview -->
       <div class="mt-5 bg-green-50 rounded-xl p-4 text-left border border-green-100">
@@ -55,6 +64,7 @@
     <!-- Footer -->
     <p class="text-center text-teal-300 text-xs mt-6">
       Powered by <strong>Viviz Technologies</strong> · viviz.in
+      {% if support_email %}<br/>Questions? {{ support_email }}{% endif %}
     </p>
   </div>
 </body>

@@ -6,6 +6,7 @@ from sqlalchemy import select, func, desc, or_, delete
 from app.database import get_db
 from app.models.contact import Contact
 from app.services.audit import log_event
+from app.services.consent import has_active_consent, record_consent
 from datetime import datetime
 import csv, io, json
 
@@ -62,6 +63,11 @@ async def add_contact(
     email: str = Form(""),
     tags: str = Form(""),
     notes: str = Form(""),
+    marketing_consent_confirmed: str = Form("false"),
+    consent_evidence: str = Form(""),
+    consent_proof_reference: str = Form(""),
+    consent_disclosure_text: str = Form(""),
+    consent_obtained_at: str = Form(""),
     db: AsyncSession = Depends(get_db),
 ):
     if not _auth(request):
@@ -75,13 +81,34 @@ async def add_contact(
     if existing:
         return JSONResponse({"error": "Contact already exists"}, status_code=400)
 
+    consent_requested = marketing_consent_confirmed.lower() == "true"
+    if consent_requested and not all((consent_evidence.strip(), consent_disclosure_text.strip(), consent_obtained_at.strip())):
+        return JSONResponse(
+            {"error": "Consent evidence, exact disclosure wording, and consent date are required"},
+            status_code=400,
+        )
+    consent_at = None
+    if consent_requested:
+        try:
+            consent_at = datetime.fromisoformat(consent_obtained_at)
+        except ValueError:
+            return JSONResponse({"error": "Invalid consent date"}, status_code=400)
+
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
     contact = Contact(
         phone=phone, name=name, email=email, tags=tag_list, notes=notes,
-        is_opted_in=True, opt_in_source="manual_admin", opt_in_at=datetime.utcnow(),
+        is_opted_in=False,
     )
     db.add(contact)
     await db.flush()
+    if consent_requested:
+        await record_consent(
+            db, contact, "marketing", "granted", "manual_admin",
+            consent_evidence, request.session.get("admin_email", "admin"),
+            disclosure_text=consent_disclosure_text,
+            proof_reference=consent_proof_reference,
+            occurred_at=consent_at,
+        )
     return JSONResponse({"status": "created", "id": contact.id})
 
 
@@ -94,6 +121,10 @@ async def update_contact(
     tags: str = Form(""),
     notes: str = Form(""),
     is_opted_in: str = Form("true"),
+    consent_evidence: str = Form(""),
+    consent_proof_reference: str = Form(""),
+    consent_disclosure_text: str = Form(""),
+    consent_obtained_at: str = Form(""),
     db: AsyncSession = Depends(get_db),
 ):
     if not _auth(request):
@@ -102,17 +133,27 @@ async def update_contact(
     if not contact:
         raise HTTPException(404, "Not found")
     new_opted_in = is_opted_in.lower() == "true"
-    if new_opted_in != contact.is_opted_in:
-        now = datetime.utcnow()
+    currently_opted_in = await has_active_consent(db, contact.id, "marketing")
+    if new_opted_in != currently_opted_in:
+        if new_opted_in and not all((consent_evidence.strip(), consent_disclosure_text.strip(), consent_obtained_at.strip())):
+            return JSONResponse(
+                {"error": "Consent evidence, exact disclosure wording, and consent date are required"},
+                status_code=400,
+            )
+        consent_at = None
         if new_opted_in:
-            contact.opt_in_source = "manual_admin"
-            contact.opt_in_at = now
-        else:
-            contact.opt_out_at = now
-        await log_event(db, actor=request.session.get("admin_email", "admin"),
-                         action="opt_in" if new_opted_in else "opt_out",
-                         target_type="contact", target_id=contact.id,
-                         meta={"source": "manual_admin"})
+            try:
+                consent_at = datetime.fromisoformat(consent_obtained_at)
+            except ValueError:
+                return JSONResponse({"error": "Invalid consent date"}, status_code=400)
+        await record_consent(
+            db, contact, "marketing", "granted" if new_opted_in else "revoked",
+            "manual_admin", consent_evidence or "Revoked by administrator",
+            request.session.get("admin_email", "admin"),
+            disclosure_text=consent_disclosure_text,
+            proof_reference=consent_proof_reference,
+            occurred_at=consent_at,
+        )
 
     contact.name = name
     contact.email = email
@@ -180,10 +221,37 @@ async def import_contacts(
                    [t.strip() for t in tags_raw.split(",") if t.strip()]
         notes = (row.get("notes") or row.get("note") or "").strip()
 
-        db.add(Contact(
+        consent_value = (row.get("marketing_opt_in") or row.get("marketing consent") or "").strip().lower()
+        consent_evidence = (row.get("consent_evidence") or row.get("consent evidence") or "").strip()
+        proof_reference = (row.get("consent_proof_reference") or row.get("proof reference") or "").strip()
+        consent_disclosure = (row.get("consent_disclosure") or row.get("consent disclosure") or "").strip()
+        consent_at_raw = (row.get("consent_at") or row.get("consent date") or "").strip()
+        wants_marketing = consent_value in {"yes", "true", "1", "granted"}
+        consent_at = None
+        if wants_marketing and not all((consent_evidence, consent_disclosure, consent_at_raw)):
+            errors.append(f"Row {i}: marketing consent needs consent_evidence, consent_disclosure, and consent_at; imported as not opted in")
+            wants_marketing = False
+        if wants_marketing:
+            try:
+                consent_at = datetime.fromisoformat(consent_at_raw)
+            except ValueError:
+                errors.append(f"Row {i}: invalid consent_at; imported as not opted in")
+                wants_marketing = False
+
+        contact = Contact(
             phone=phone, name=name, email=email, tags=tag_list, notes=notes,
-            is_opted_in=True, opt_in_source="csv_import", opt_in_at=datetime.utcnow(),
-        ))
+            is_opted_in=False,
+        )
+        db.add(contact)
+        await db.flush()
+        if wants_marketing:
+            await record_consent(
+                db, contact, "marketing", "granted", "csv_import",
+                consent_evidence, request.session.get("admin_email", "admin"),
+                disclosure_text=consent_disclosure,
+                proof_reference=proof_reference,
+                occurred_at=consent_at,
+            )
         added += 1
 
     await db.commit()
@@ -235,14 +303,24 @@ async def bulk_delete_by_tags(request: Request, db: AsyncSession = Depends(get_d
         return JSONResponse({"deleted": 0})
 
     ids = [c.id for c in to_delete]
-    from sqlalchemy import text
-    # Remove dependent rows before deleting contacts to satisfy FK constraints
-    await db.execute(text("DELETE FROM broadcast_recipients WHERE contact_id = ANY(:ids)"), {"ids": ids})
-    await db.execute(text("DELETE FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE contact_id = ANY(:ids))"), {"ids": ids})
-    await db.execute(text("DELETE FROM conversations WHERE contact_id = ANY(:ids)"), {"ids": ids})
-    await db.execute(text("DELETE FROM drip_enrollments WHERE contact_id = ANY(:ids)"), {"ids": ids})
-    await db.execute(text("DELETE FROM campaign_flow_states WHERE contact_id = ANY(:ids)"), {"ids": ids})
-    await db.execute(text("DELETE FROM contacts WHERE id = ANY(:ids)"), {"ids": ids})
+    from app.models.broadcast import BroadcastRecipient
+    from app.models.campaign_flow import CampaignFlowState
+    from app.models.consent import ConsentEvent
+    from app.models.conversation import Conversation, Message
+    from app.models.drip_campaign import DripEnrollment
+
+    # SQLAlchemy IN clauses work on both SQLite and PostgreSQL.
+    conv_ids = (await db.execute(
+        select(Conversation.id).where(Conversation.contact_id.in_(ids))
+    )).scalars().all()
+    if conv_ids:
+        await db.execute(delete(Message).where(Message.conversation_id.in_(conv_ids)))
+    await db.execute(delete(BroadcastRecipient).where(BroadcastRecipient.contact_id.in_(ids)))
+    await db.execute(delete(Conversation).where(Conversation.contact_id.in_(ids)))
+    await db.execute(delete(DripEnrollment).where(DripEnrollment.contact_id.in_(ids)))
+    await db.execute(delete(CampaignFlowState).where(CampaignFlowState.contact_id.in_(ids)))
+    await db.execute(delete(ConsentEvent).where(ConsentEvent.contact_id.in_(ids)))
+    await db.execute(delete(Contact).where(Contact.id.in_(ids)))
     await db.commit()
     return JSONResponse({"deleted": len(ids)})
 
@@ -259,6 +337,7 @@ async def export_contact_data(contact_id: int, request: Request, db: AsyncSessio
 
     from app.models.conversation import Conversation, Message
     from app.models.broadcast import BroadcastRecipient
+    from app.models.consent import ConsentEvent
 
     conversations = (await db.execute(
         select(Conversation).where(Conversation.contact_id == contact_id)
@@ -271,6 +350,9 @@ async def export_contact_data(contact_id: int, request: Request, db: AsyncSessio
         )).scalars().all()
     recipients = (await db.execute(
         select(BroadcastRecipient).where(BroadcastRecipient.contact_id == contact_id)
+    )).scalars().all()
+    consent_events = (await db.execute(
+        select(ConsentEvent).where(ConsentEvent.contact_id == contact_id).order_by(ConsentEvent.created_at)
     )).scalars().all()
 
     data = {
@@ -302,6 +384,18 @@ async def export_contact_data(contact_id: int, request: Request, db: AsyncSessio
             }
             for r in recipients
         ],
+        "consent_events": [
+            {
+                "category": e.category, "action": e.action,
+                "business_name": e.business_name, "disclosure_text": e.disclosure_text,
+                "source": e.source, "evidence": e.evidence,
+                "proof_reference": e.proof_reference,
+                "privacy_policy_url": e.privacy_policy_url,
+                "occurred_at": e.occurred_at.isoformat(),
+                "created_at": e.created_at.isoformat(),
+            }
+            for e in consent_events
+        ],
     }
 
     await log_event(db, actor=request.session.get("admin_email", "admin"), action="contact_data_export",
@@ -311,6 +405,38 @@ async def export_contact_data(contact_id: int, request: Request, db: AsyncSessio
     return JSONResponse(data, headers={
         "Content-Disposition": f"attachment; filename=contact_{contact_id}_data_export.json"
     })
+
+
+@router.get("/{contact_id}/consent-history")
+async def contact_consent_history(contact_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    """Return the append-only consent evidence trail for an authenticated compliance review."""
+    if not _auth(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    contact = (await db.execute(select(Contact).where(Contact.id == contact_id))).scalar_one_or_none()
+    if not contact:
+        raise HTTPException(404, "Not found")
+    from app.models.consent import ConsentEvent
+    events = (await db.execute(
+        select(ConsentEvent)
+        .where(ConsentEvent.contact_id == contact_id)
+        .order_by(ConsentEvent.id.desc())
+    )).scalars().all()
+    return JSONResponse([
+        {
+            "category": e.category,
+            "action": e.action,
+            "business_name": e.business_name,
+            "disclosure_text": e.disclosure_text,
+            "source": e.source,
+            "evidence": e.evidence,
+            "proof_reference": e.proof_reference,
+            "privacy_policy_url": e.privacy_policy_url,
+            "actor": e.actor,
+            "occurred_at": e.occurred_at.isoformat(),
+            "recorded_at": e.created_at.isoformat(),
+        }
+        for e in events
+    ])
 
 
 @router.post("/{contact_id}/erase-data")
@@ -327,6 +453,7 @@ async def erase_contact_data(contact_id: int, request: Request, db: AsyncSession
     from app.models.broadcast import BroadcastRecipient
     from app.models.drip_campaign import DripEnrollment
     from app.models.campaign_flow import CampaignFlowState
+    from app.models.consent import ConsentEvent
 
     phone = contact.phone
     await log_event(db, actor=request.session.get("admin_email", "admin"), action="contact_data_erasure",
@@ -341,6 +468,7 @@ async def erase_contact_data(contact_id: int, request: Request, db: AsyncSession
     await db.execute(delete(BroadcastRecipient).where(BroadcastRecipient.contact_id == contact_id))
     await db.execute(delete(DripEnrollment).where(DripEnrollment.contact_id == contact_id))
     await db.execute(delete(CampaignFlowState).where(CampaignFlowState.contact_id == contact_id))
+    await db.execute(delete(ConsentEvent).where(ConsentEvent.contact_id == contact_id))
     await db.execute(delete(Contact).where(Contact.id == contact_id))
     await db.commit()
 
@@ -352,7 +480,7 @@ async def export_contacts(request: Request, db: AsyncSession = Depends(get_db)):
     if not _auth(request):
         return RedirectResponse("/login", status_code=302)
     contacts = (await db.execute(select(Contact).order_by(Contact.created_at))).scalars().all()
-    lines = ["Phone,Name,Email,Tags,Opted In,Created"]
+    lines = ["Phone,Name,Email,Tags,Verified Marketing Consent,Created"]
     for c in contacts:
         lines.append(f"{c.phone},{c.name or ''},{c.email or ''},{';'.join(c.tags or [])},{c.is_opted_in},{c.created_at.strftime('%Y-%m-%d')}")
     from fastapi.responses import PlainTextResponse

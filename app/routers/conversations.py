@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Request, Depends, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi import APIRouter, Request, Depends, Form, HTTPException, File, UploadFile
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
@@ -8,8 +8,11 @@ from app.database import get_db
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message, MessageDirection, MessageType, MessageStatus
 from app.services.whatsapp import whatsapp
+from app.services.media_validation import validate_media_upload
 from app.services.ai import generate_reply
 from datetime import datetime, timedelta
+import httpx
+from urllib.parse import quote
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 templates = Jinja2Templates(directory="app/templates")
@@ -162,6 +165,138 @@ async def send_message(
     db.add(msg)
     conv.last_message_at = datetime.utcnow()
     return JSONResponse({"status": "sent", "wa_message_id": wa_msg_id})
+
+
+@router.post("/{conv_id}/send-media")
+async def send_media_message(
+    conv_id: int,
+    request: Request,
+    attachment: UploadFile = File(...),
+    caption: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    if not _auth(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    conv = (await db.execute(select(Conversation).where(Conversation.id == conv_id))).scalar_one_or_none()
+    if not conv:
+        raise HTTPException(404, "Conversation not found")
+    if not _within_service_window(conv):
+        return JSONResponse({
+            "error": "The 24-hour customer service window has closed. Send an approved media template instead.",
+            "window_closed": True,
+        }, status_code=409)
+
+    contact = (await db.execute(select(Contact).where(Contact.id == conv.contact_id))).scalar_one_or_none()
+    if not contact or contact.is_blocked:
+        return JSONResponse({"error": "Contact is blocked or unavailable"}, status_code=409)
+
+    caption = caption.strip()
+    if len(caption) > 1024:
+        return JSONResponse({"error": "Captions can contain up to 1,024 characters."}, status_code=400)
+
+    try:
+        rule, filename, file_size, mime_type = validate_media_upload(
+            attachment.file, attachment.filename, attachment.content_type
+        )
+        if rule.message_type == "audio" and caption:
+            return JSONResponse({
+                "error": "WhatsApp audio messages do not support captions. Remove the caption and send again."
+            }, status_code=400)
+        uploaded = await whatsapp.upload_media(
+            attachment.file, filename, mime_type
+        )
+        media_id = uploaded.get("id")
+        if not media_id:
+            raise RuntimeError("Meta did not return a media ID")
+        result = await whatsapp.send_media(
+            contact.phone,
+            rule.message_type,
+            media_id,
+            caption=caption,
+            filename=filename,
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except httpx.HTTPStatusError as exc:
+        detail = "Meta rejected the attachment. Check its format and try again."
+        try:
+            meta_error = exc.response.json().get("error", {}).get("message")
+            if meta_error:
+                detail = f"Meta rejected the attachment: {meta_error}"
+        except (ValueError, AttributeError):
+            pass
+        return JSONResponse({"error": detail}, status_code=422)
+    finally:
+        await attachment.close()
+
+    wa_msg_id = result.get("messages", [{}])[0].get("id")
+    db.add(Message(
+        conversation_id=conv_id,
+        wa_message_id=wa_msg_id,
+        direction=MessageDirection.outbound,
+        message_type=MessageType(rule.message_type),
+        content=caption or f"[{rule.message_type}]",
+        media_id=media_id,
+        caption=caption or None,
+        status=MessageStatus.sent,
+        raw_payload={
+            "filename": filename,
+            "mime_type": mime_type,
+            "file_size": file_size,
+        },
+    ))
+    conv.last_message_at = datetime.utcnow()
+    return JSONResponse({
+        "status": "sent",
+        "wa_message_id": wa_msg_id,
+        "message_type": rule.message_type,
+        "filename": filename,
+        "caption": caption,
+        "file_size": file_size,
+    })
+
+
+@router.get("/media/{message_id}")
+async def view_message_media(
+    message_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Proxy private Meta media through the authenticated inbox."""
+    if not _auth(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    message = (await db.execute(select(Message).where(Message.id == message_id))).scalar_one_or_none()
+    if not message or not message.media_id:
+        raise HTTPException(404, "Media not found")
+
+    try:
+        info = await whatsapp.get_media_info(message.media_id)
+        media_url = info.get("url")
+        if not media_url:
+            raise HTTPException(404, "Media is no longer available from Meta")
+        content = await whatsapp.download_media(media_url)
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(404, "Media is no longer available from Meta") from exc
+
+    raw = message.raw_payload or {}
+    nested = raw.get(message.message_type.value, {}) if isinstance(raw, dict) else {}
+    filename = raw.get("filename") or nested.get("filename") or f"attachment-{message.id}"
+    filename = quote(str(filename).replace("\r", "").replace("\n", ""))
+    mime_type = info.get("mime_type") or raw.get("mime_type") or "application/octet-stream"
+    disposition = "inline" if message.message_type in {
+        MessageType.image, MessageType.video, MessageType.audio, MessageType.sticker
+    } else "attachment"
+    return Response(
+        content=content,
+        media_type=mime_type,
+        headers={
+            "Content-Disposition": f"{disposition}; filename*=UTF-8''{filename}",
+            "Cache-Control": "private, max-age=300",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.post("/{conv_id}/ai-reply")

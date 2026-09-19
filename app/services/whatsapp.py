@@ -1,5 +1,5 @@
 import httpx
-from typing import Optional
+from typing import BinaryIO, Optional
 from app.config import settings
 
 
@@ -85,6 +85,52 @@ class WhatsAppService:
             "document": {"link": doc_url, "filename": filename, "caption": caption},
         })
 
+    async def upload_media(
+        self,
+        file_obj: BinaryIO,
+        filename: str,
+        content_type: str,
+    ) -> dict:
+        """Upload a file to Meta and return its reusable media ID."""
+        url = f"{settings.whatsapp_api_url}/{settings.whatsapp_phone_number_id}/media"
+        headers = {"Authorization": f"Bearer {settings.whatsapp_access_token}"}
+        file_obj.seek(0)
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.post(
+                url,
+                headers=headers,
+                data={"messaging_product": "whatsapp"},
+                files={"file": (filename, file_obj, content_type)},
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def send_media(
+        self,
+        to: str,
+        media_type: str,
+        media_id: str,
+        caption: str = "",
+        filename: str = "",
+    ) -> dict:
+        """Send previously uploaded media by ID without exposing a public URL."""
+        if media_type not in {"image", "document", "audio", "video"}:
+            raise ValueError("Unsupported WhatsApp media message type")
+
+        media: dict[str, str] = {"id": media_id}
+        if caption and media_type in {"image", "document", "video"}:
+            media["caption"] = caption
+        if filename and media_type == "document":
+            media["filename"] = filename
+
+        return await self._post(settings.messages_url, {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": media_type,
+            media_type: media,
+        })
+
     # ── Interactive List Message ───────────────────────────────────────────────
 
     async def send_interactive_list(
@@ -165,9 +211,15 @@ class WhatsAppService:
     # ── Media Download ────────────────────────────────────────────────────────
 
     async def get_media_url(self, media_id: str) -> str:
-        url = f"{settings.whatsapp_api_url}/{media_id}"
-        data = await self._get(url)
+        data = await self.get_media_info(media_id)
         return data.get("url", "")
+
+    async def get_media_info(self, media_id: str) -> dict:
+        url = (
+            f"{settings.whatsapp_api_url}/{media_id}"
+            f"?phone_number_id={settings.whatsapp_phone_number_id}"
+        )
+        return await self._get(url)
 
     async def download_media(self, media_url: str) -> bytes:
         async with httpx.AsyncClient(timeout=60) as client:

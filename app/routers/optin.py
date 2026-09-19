@@ -4,20 +4,64 @@ No auth required (it's a public landing page for customers).
 """
 import io
 import base64
+import re
+import time
 import qrcode
 from fastapi import APIRouter, Request, Query, HTTPException
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 from app.config import settings
 from app.services.consent import default_disclosure
+from app.services.whatsapp import whatsapp
 
 router = APIRouter(prefix="/optin", tags=["optin"])
 templates = Jinja2Templates(directory="app/templates")
 
+_phone_cache: tuple[str, float] = ("", 0.0)
+
+
+def _phone_digits(phone: str) -> str:
+    return re.sub(r"\D", "", phone or "")
+
+
+def _valid_customer_phone(phone: str) -> bool:
+    digits = _phone_digits(phone)
+    phone_number_id = _phone_digits(settings.whatsapp_phone_number_id)
+    return 7 <= len(digits) <= 15 and digits != phone_number_id
+
+
+async def _resolve_business_phone() -> str:
+    """Use a valid configured number, otherwise resolve the display number from Meta."""
+    global _phone_cache
+    configured = settings.whatsapp_business_phone
+    if _valid_customer_phone(configured):
+        return configured
+
+    cached_phone, expires_at = _phone_cache
+    if _valid_customer_phone(cached_phone) and expires_at > time.monotonic():
+        return cached_phone
+
+    try:
+        display_phone = await whatsapp.get_display_phone_number()
+    except Exception as exc:
+        raise HTTPException(
+            503,
+            "The WhatsApp display phone number could not be loaded from Meta. "
+            "Configure the real E.164 number in Settings; do not use the Phone Number ID.",
+        ) from exc
+    if not _valid_customer_phone(display_phone):
+        raise HTTPException(
+            503,
+            "Meta did not return a valid WhatsApp display phone number. "
+            "Configure the real E.164 number in Settings.",
+        )
+    _phone_cache = (display_phone, time.monotonic() + 600)
+    return display_phone
+
 
 def _wa_deeplink(phone: str, message: str) -> str:
     from urllib.parse import quote
-    clean = phone.replace("+", "").replace(" ", "")
+    clean = _phone_digits(phone)
     return f"https://wa.me/{clean}?text={quote(message)}"
 
 
@@ -39,9 +83,7 @@ async def optin_page(
 ):
     if category not in {"marketing", "utility"}:
         raise HTTPException(400, "Category must be marketing or utility")
-    wa_phone = settings.whatsapp_business_phone
-    if not wa_phone:
-        raise HTTPException(503, "WhatsApp business phone is not configured")
+    wa_phone = await _resolve_business_phone()
     command = "CONFIRM MARKETING" if category == "marketing" else "CONFIRM UPDATES"
     deeplink = _wa_deeplink(wa_phone, command)
     qr_img = _qr_base64(deeplink)
@@ -66,9 +108,7 @@ async def qr_image(
     """Returns raw QR PNG — embed as <img src='/optin/qr.png'> on any page."""
     if category not in {"marketing", "utility"}:
         raise HTTPException(400, "Category must be marketing or utility")
-    wa_phone = settings.whatsapp_business_phone
-    if not wa_phone:
-        raise HTTPException(503, "WhatsApp business phone is not configured")
+    wa_phone = await _resolve_business_phone()
     command = "CONFIRM MARKETING" if category == "marketing" else "CONFIRM UPDATES"
     deeplink = _wa_deeplink(wa_phone, command)
 

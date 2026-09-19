@@ -256,5 +256,14 @@ class WhatsAppService:
         url = f"{settings.whatsapp_api_url}/{settings.whatsapp_business_account_id}/phone_numbers"
         return await self._get(url)
 
+    async def get_display_phone_number(self) -> str:
+        """Return the real customer-facing number for the configured Phone Number ID."""
+        url = (
+            f"{settings.whatsapp_api_url}/{settings.whatsapp_phone_number_id}"
+            "?fields=display_phone_number"
+        )
+        data = await self._get(url)
+        return str(data.get("display_phone_number") or "")
+
 
 whatsapp = WhatsAppService()

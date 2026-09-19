@@ -6,6 +6,7 @@ from sqlalchemy import select, desc
 from app.database import get_db
 from app.models.template import MessageTemplate
 from app.services.whatsapp import whatsapp
+from app.services.template_builder import components_from_template, prepare_template
 import logging
 
 router = APIRouter(prefix="/templates", tags=["templates"])
@@ -35,6 +36,8 @@ async def templates_list(request: Request, db: AsyncSession = Depends(get_db)):
                 header_comp = comp.get("HEADER", {})
                 footer_comp = comp.get("FOOTER", {})
                 buttons_comp = comp.get("BUTTONS", {})
+                body_examples = body_comp.get("example", {}).get("body_text", [[]])
+                body_values = body_examples[0] if body_examples and isinstance(body_examples[0], list) else []
                 tpl = MessageTemplate(
                     name=t.get("name"),
                     language=t.get("language", "en"),
@@ -46,6 +49,10 @@ async def templates_list(request: Request, db: AsyncSession = Depends(get_db)):
                     body=body_comp.get("text", ""),
                     footer=footer_comp.get("text"),
                     buttons=buttons_comp.get("buttons", []),
+                    variables=[
+                        {"position": index + 1, "sample": value}
+                        for index, value in enumerate(body_values)
+                    ],
                 )
                 db.add(tpl)
             else:
@@ -55,6 +62,15 @@ async def templates_list(request: Request, db: AsyncSession = Depends(get_db)):
                 comp = {c["type"]: c for c in t.get("components", [])}
                 if comp.get("BODY"):
                     existing.body = comp["BODY"].get("text", existing.body)
+                    examples = comp["BODY"].get("example", {}).get("body_text", [[]])
+                    values = examples[0] if examples and isinstance(examples[0], list) else []
+                    existing.variables = [
+                        {"position": index + 1, "sample": value}
+                        for index, value in enumerate(values)
+                    ]
+                if comp.get("HEADER"):
+                    existing.header_type = comp["HEADER"].get("format", "").lower() or None
+                    existing.header_content = comp["HEADER"].get("text")
                 if comp.get("FOOTER"):
                     existing.footer = comp["FOOTER"].get("text", existing.footer)
                 existing.buttons = comp.get("BUTTONS", {}).get("buttons", existing.buttons or [])
@@ -79,26 +95,34 @@ async def create_template(
     name: str = Form(...),
     category: str = Form(...),
     language: str = Form("en"),
-    header: str = Form(""),
+    header_type: str = Form("NONE"),
+    header_text: str = Form(""),
     body: str = Form(...),
     footer: str = Form(""),
+    body_examples_json: str = Form("[]"),
+    buttons_json: str = Form("[]"),
     submit_to_meta: str = Form("false"),
     db: AsyncSession = Depends(get_db),
 ):
     if not _auth(request):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
-    clean_name = name.lower().replace(" ", "_")
-    category = category.upper()
-    if category not in {"MARKETING", "UTILITY", "AUTHENTICATION"}:
-        return JSONResponse({"error": "Invalid template category"}, status_code=400)
-    if category == "MARKETING":
-        if not footer:
-            footer = "Reply STOP MARKETING to opt out."
-        elif not any(term in footer.lower() for term in ("stop", "unsubscribe", "opt out", "opt-out")):
-            return JSONResponse({
-                "error": "Marketing template footer must explain how to opt out (for example: Reply STOP MARKETING)."
-            }, status_code=400)
+    try:
+        prepared = prepare_template(
+            name=name,
+            category=category,
+            language=language,
+            header_type=header_type,
+            header_text=header_text,
+            body=body,
+            footer=footer,
+            body_examples_json=body_examples_json,
+            buttons_json=buttons_json,
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    clean_name = prepared["name"]
 
     existing = (await db.execute(
         select(MessageTemplate).where(MessageTemplate.name == clean_name)
@@ -108,31 +132,26 @@ async def create_template(
 
     tpl = MessageTemplate(
         name=clean_name,
-        category=category,
-        language=language,
-        header_type="text" if header else None,
-        header_content=header or None,
-        body=body,
-        footer=footer,
-        status="PENDING",
+        category=prepared["category"],
+        language=prepared["language"],
+        header_type=prepared["header_type"],
+        header_content=prepared["header_content"],
+        body=prepared["body"],
+        footer=prepared["footer"],
+        buttons=prepared["buttons"],
+        variables=prepared["variables"],
+        status="DRAFT",
     )
     db.add(tpl)
     await db.flush()
 
     if submit_to_meta == "true":
         try:
-            components = []
-            if header:
-                components.append({"type": "HEADER", "format": "TEXT", "text": header})
-            components.append({"type": "BODY", "text": body})
-            if footer:
-                components.append({"type": "FOOTER", "text": footer})
-
             result = await whatsapp.create_template(
                 name=clean_name,
-                language=language,
-                category=category,
-                components=components,
+                language=prepared["language"],
+                category=prepared["category"],
+                components=prepared["components"],
             )
             tpl.wa_template_id = result.get("id")
             tpl.status = result.get("status", "PENDING")
@@ -165,18 +184,11 @@ async def submit_template_to_meta(tpl_id: int, request: Request, db: AsyncSessio
         return JSONResponse({"error": "Already submitted to Meta"}, status_code=400)
 
     try:
-        components = []
-        if tpl.header_content:
-            components.append({"type": "HEADER", "format": "TEXT", "text": tpl.header_content})
-        components.append({"type": "BODY", "text": tpl.body})
-        if tpl.footer:
-            components.append({"type": "FOOTER", "text": tpl.footer})
-
         result = await whatsapp.create_template(
             name=tpl.name,
             language=tpl.language,
             category=tpl.category,
-            components=components,
+            components=components_from_template(tpl),
         )
         tpl.wa_template_id = result.get("id")
         tpl.status = result.get("status", "PENDING")

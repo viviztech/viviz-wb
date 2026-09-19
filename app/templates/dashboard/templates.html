@@ -27,6 +27,8 @@
       <span class="text-xs bg-green-50 text-green-600 px-2 py-0.5 rounded-full flex-shrink-0">Approved</span>
       {% elif t.status == 'PENDING' %}
       <span class="text-xs bg-yellow-50 text-yellow-600 px-2 py-0.5 rounded-full flex-shrink-0">Pending</span>
+      {% elif t.status == 'DRAFT' %}
+      <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full flex-shrink-0">Draft</span>
       {% else %}
       <span class="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full flex-shrink-0">Rejected</span>
       {% endif %}
@@ -42,6 +44,18 @@
 
     {% if t.footer %}
     <p class="text-xs text-gray-400 mt-2 italic">{{ t.footer }}</p>
+    {% endif %}
+
+    {% if t.buttons %}
+    <div class="flex flex-wrap gap-1.5 mt-3">
+      {% for button in t.buttons %}
+      <span class="text-[11px] bg-teal-50 text-teal-700 border border-teal-100 rounded-full px-2 py-1">
+        {% if button.type == 'URL' %}<i class="fas fa-external-link-alt mr-1"></i>
+        {% elif button.type == 'PHONE_NUMBER' %}<i class="fas fa-phone mr-1"></i>
+        {% else %}<i class="fas fa-reply mr-1"></i>{% endif %}{{ button.text }}
+      </span>
+      {% endfor %}
+    </div>
     {% endif %}
 
     <div class="mt-3 pt-3 border-t border-gray-50 flex items-center justify-between">
@@ -75,79 +89,181 @@
 </div>
 
 <!-- Create Template Modal -->
-<div id="new-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-  <div class="bg-white rounded-2xl shadow-xl w-full max-w-[min(32rem,90vw)] p-6 max-h-[90vh] overflow-y-auto">
-    <div class="flex items-center justify-between mb-5">
-      <h3 class="font-semibold text-gray-800">New Template</h3>
-      <button onclick="document.getElementById('new-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">
+<div id="new-modal" class="hidden fixed inset-0 bg-gray-950/55 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-5">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[94vh] overflow-hidden flex flex-col border border-white/40">
+    <div class="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-gray-100">
+      <div>
+        <h3 class="font-semibold text-gray-900">Create message template</h3>
+        <p class="text-xs text-gray-400 mt-0.5">Build the exact content Meta will review.</p>
+      </div>
+      <button type="button" onclick="closeTemplateModal()" aria-label="Close template form"
+        class="w-8 h-8 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100">
         <i class="fas fa-times"></i>
       </button>
     </div>
 
-    <form id="tpl-form" class="space-y-4">
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div class="grid lg:grid-cols-[minmax(0,3fr)_minmax(18rem,2fr)] min-h-0 flex-1">
+      <form id="tpl-form" class="p-5 sm:p-6 space-y-5 overflow-y-auto" oninput="refreshTemplateForm()">
+        <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-teal-50 border border-teal-100 px-4 py-3">
+          <div>
+            <p class="text-xs font-semibold text-teal-800">Need a starting point?</p>
+            <p class="text-[11px] text-teal-600 mt-0.5">Load the Viviz brand-awareness template.</p>
+          </div>
+          <button type="button" onclick="loadBrandAwarenessPreset()"
+            class="text-xs font-medium bg-white text-teal-700 border border-teal-200 px-3 py-1.5 rounded-lg hover:bg-teal-100">
+            Use suggested content
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1.5">Template name *</label>
+            <input id="tpl-name" type="text" name="name" required maxlength="512" pattern="[a-z0-9_]+"
+              placeholder="order_confirmation"
+              class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
+            <p class="text-[11px] text-gray-400 mt-1">Lowercase letters, numbers and underscores.</p>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1.5">Language *</label>
+            <select id="tpl-language" name="language"
+              class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white">
+              <option value="en">English</option>
+              <option value="en_US">English (US)</option>
+              <option value="ta">Tamil</option>
+              <option value="hi">Hindi</option>
+            </select>
+          </div>
+        </div>
+
+        <fieldset>
+          <legend class="block text-xs font-medium text-gray-700 mb-2">Category *</legend>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="cursor-pointer">
+              <input type="radio" name="category" value="UTILITY" class="sr-only peer" checked onchange="onCategoryChange()">
+              <span class="block rounded-xl border border-gray-200 p-3 peer-checked:border-teal-500 peer-checked:bg-teal-50 transition">
+                <span class="block text-sm font-medium text-gray-800">Utility</span>
+                <span class="block text-[11px] text-gray-500 mt-1">Order, account or requested service updates.</span>
+              </span>
+            </label>
+            <label class="cursor-pointer">
+              <input type="radio" name="category" value="MARKETING" class="sr-only peer" onchange="onCategoryChange()">
+              <span class="block rounded-xl border border-gray-200 p-3 peer-checked:border-teal-500 peer-checked:bg-teal-50 transition">
+                <span class="block text-sm font-medium text-gray-800">Marketing</span>
+                <span class="block text-[11px] text-gray-500 mt-1">Awareness, offers and product discovery.</span>
+              </span>
+            </label>
+          </div>
+          <p id="category-note" class="text-[11px] text-gray-400 mt-2">Utility content must relate to a transaction or request from the customer.</p>
+        </fieldset>
+
         <div>
-          <label class="block text-xs font-medium text-gray-600 mb-1">Template Name *</label>
-          <input type="text" name="name" required placeholder="e.g. order_confirmation"
+          <div class="flex items-center justify-between mb-1.5">
+            <label class="text-xs font-medium text-gray-700">Header</label>
+            <select id="header-type" name="header_type" onchange="toggleHeaderField()"
+              class="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400">
+              <option value="NONE">No header</option>
+              <option value="TEXT">Text header</option>
+            </select>
+          </div>
+          <div id="header-text-wrap" class="hidden">
+            <input id="header-text" type="text" name="header_text" maxlength="60" placeholder="Order confirmed"
+              class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
+            <div class="flex justify-between mt-1 text-[11px] text-gray-400"><span>Variables are not supported in headers.</span><span id="header-count">0/60</span></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <label class="text-xs font-medium text-gray-700">Body *</label>
+            <button type="button" onclick="insertBodyVariable()" class="text-[11px] font-medium text-teal-600 hover:text-teal-800">
+              <i class="fas fa-plus-circle mr-1"></i>Add variable
+            </button>
+          </div>
+          <textarea id="tpl-body" name="body" required rows="6" maxlength="1024"
+            placeholder="Hello! Your order has been confirmed."
+            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 resize-y"></textarea>
+          <div class="flex justify-between mt-1 text-[11px] text-gray-400">
+            <span>Variables must be sequential: <code>{{"{{"}}1{{"}}"}}</code>, <code>{{"{{"}}2{{"}}"}}</code>.</span>
+            <span id="body-count">0/1024</span>
+          </div>
+        </div>
+
+        <div id="body-examples-section" class="hidden rounded-xl bg-amber-50 border border-amber-100 p-3">
+          <p class="text-xs font-medium text-amber-900">Sample values for Meta review</p>
+          <p class="text-[11px] text-amber-700 mt-0.5 mb-3">Samples demonstrate the final message and are not sent to customers.</p>
+          <div id="body-example-fields" class="space-y-2"></div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-gray-700 mb-1.5">Footer <span class="font-normal text-gray-400">(optional)</span></label>
+          <input id="tpl-footer" type="text" name="footer" maxlength="60" placeholder="Reply STOP to opt out."
             class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
-          <p class="text-xs text-gray-400 mt-1">Lowercase, underscores only</p>
+          <p class="text-[11px] text-gray-400 mt-1 text-right"><span id="footer-count">0</span>/60</p>
         </div>
+
         <div>
-          <label class="block text-xs font-medium text-gray-600 mb-1">Category *</label>
-          <select name="category" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400">
-            <option value="UTILITY">Utility</option>
-            <option value="MARKETING">Marketing</option>
-            <option value="AUTHENTICATION">Authentication</option>
-          </select>
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <div>
+              <p class="text-xs font-medium text-gray-700">Buttons <span class="font-normal text-gray-400">(optional)</span></p>
+              <p class="text-[11px] text-gray-400 mt-0.5">Add up to three fixed actions.</p>
+            </div>
+            <div class="flex gap-1">
+              <button type="button" onclick="addTemplateButton('QUICK_REPLY')" class="text-[11px] border border-gray-200 px-2 py-1 rounded-md hover:border-teal-300">Reply</button>
+              <button type="button" onclick="addTemplateButton('URL')" class="text-[11px] border border-gray-200 px-2 py-1 rounded-md hover:border-teal-300">Website</button>
+              <button type="button" onclick="addTemplateButton('PHONE_NUMBER')" class="text-[11px] border border-gray-200 px-2 py-1 rounded-md hover:border-teal-300">Call</button>
+            </div>
+          </div>
+          <div id="template-buttons" class="space-y-2"></div>
         </div>
-      </div>
 
-      <div>
-        <label class="block text-xs font-medium text-gray-600 mb-1">Language</label>
-        <select name="language" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400">
-          <option value="en">English</option>
-          <option value="ta">Tamil</option>
-          <option value="hi">Hindi</option>
-        </select>
-      </div>
-
-      <div>
-        <label class="block text-xs font-medium text-gray-600 mb-1">Header Text (optional)</label>
-        <input type="text" name="header" placeholder="e.g. Order Confirmed"
-          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
-        <p class="text-xs text-gray-400 mt-1">Plain text only. No emojis for Meta submission.</p>
-      </div>
-
-      <div>
-        <label class="block text-xs font-medium text-gray-600 mb-1">Body *</label>
-        <textarea name="body" required rows="5" placeholder="Hello! Your order has been confirmed. Thank you for shopping with us."
-          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none"></textarea>
-        <p class="text-xs text-gray-400 mt-1">Avoid variables ({{1}}) unless you provide sample values in Meta Business Manager.</p>
-      </div>
-
-      <div>
-        <label class="block text-xs font-medium text-gray-600 mb-1">Footer (optional)</label>
-        <input type="text" name="footer" placeholder="Viviz Technologies | viviz.in"
-          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
-      </div>
-
-      <!-- Submit to Meta toggle -->
-      <div class="flex items-start gap-3 bg-teal-50 border border-teal-100 rounded-lg p-3">
-        <input type="checkbox" id="submit-meta-cb" name="submit_to_meta" value="true"
-          class="mt-0.5 h-4 w-4 text-teal-600 rounded border-gray-300 focus:ring-teal-500"/>
-        <div>
-          <label for="submit-meta-cb" class="text-sm font-medium text-teal-800 cursor-pointer">Submit to Meta for approval</label>
-          <p class="text-xs text-teal-600 mt-0.5">Sends directly to Meta WhatsApp API. Approval usually takes a few minutes.</p>
+        <div id="marketing-note" class="hidden rounded-xl bg-blue-50 border border-blue-100 px-3 py-2.5 text-xs text-blue-800">
+          <i class="fas fa-shield-alt mr-1"></i>Marketing templates need STOP/opt-out wording or a quick-reply button such as “Stop marketing”.
         </div>
-      </div>
 
-      <p id="tpl-error" class="text-xs text-red-500 hidden"></p>
+        <input type="hidden" id="body-examples-json" name="body_examples_json" value="[]">
+        <input type="hidden" id="buttons-json" name="buttons_json" value="[]">
 
-      <button type="button" onclick="createTemplate()"
-        class="w-full bg-teal-600 hover:bg-teal-700 text-white py-2.5 rounded-lg text-sm font-medium flex items-center justify-center gap-2">
-        <i class="fas fa-save"></i> Save Template
-      </button>
-    </form>
+        <div class="flex items-start gap-3 bg-teal-50 border border-teal-100 rounded-xl p-3">
+          <input type="checkbox" id="submit-meta-cb" name="submit_to_meta" value="true"
+            class="mt-0.5 h-4 w-4 text-teal-600 rounded border-gray-300 focus:ring-teal-500"/>
+          <div>
+            <label for="submit-meta-cb" class="text-sm font-medium text-teal-800 cursor-pointer">Submit to Meta for approval</label>
+            <p class="text-xs text-teal-600 mt-0.5">Leave off to save a local draft you can review first.</p>
+          </div>
+        </div>
+
+        <p id="tpl-error" class="text-xs text-red-600 hidden rounded-lg bg-red-50 border border-red-100 px-3 py-2"></p>
+
+        <button id="save-template-btn" type="button" onclick="createTemplate()"
+          class="w-full bg-teal-600 hover:bg-teal-700 disabled:bg-teal-300 text-white py-2.5 rounded-lg text-sm font-medium flex items-center justify-center gap-2">
+          <i class="fas fa-save"></i> Save template
+        </button>
+      </form>
+
+      <aside class="hidden lg:block bg-[#e8eeec] border-l border-gray-100 p-6 overflow-y-auto">
+        <div class="sticky top-0">
+          <div class="flex items-center justify-between mb-4">
+            <p class="text-xs font-semibold uppercase tracking-wider text-gray-500">Customer preview</p>
+            <span class="text-[10px] text-gray-500 bg-white/70 rounded-full px-2 py-1">WhatsApp</span>
+          </div>
+          <div class="rounded-2xl bg-[#dfe9e5] border border-white/70 p-4 shadow-inner min-h-72 flex items-end">
+            <div class="w-full max-w-sm ml-auto rounded-xl rounded-tr-sm bg-[#d9fdd3] px-3 py-2.5 shadow-sm">
+              <p id="preview-header" class="hidden text-sm font-semibold text-gray-900 mb-1"></p>
+              <p id="preview-body" class="text-sm leading-5 text-gray-800 whitespace-pre-wrap">Your message preview appears here.</p>
+              <p id="preview-footer" class="hidden text-xs text-gray-500 mt-2"></p>
+              <div id="preview-buttons" class="mt-2 space-y-1"></div>
+              <div class="text-right text-[10px] text-gray-500 mt-1">10:01 <i class="fas fa-check-double text-blue-500"></i></div>
+            </div>
+          </div>
+          <div class="mt-4 rounded-xl border border-gray-200 bg-white/70 p-3 text-xs text-gray-600 leading-5">
+            <p class="font-medium text-gray-700 mb-1">Approval checklist</p>
+            <p><i class="fas fa-check text-teal-600 mr-1"></i>Business identity is clear</p>
+            <p><i class="fas fa-check text-teal-600 mr-1"></i>Samples match every variable</p>
+            <p><i class="fas fa-check text-teal-600 mr-1"></i>Marketing has an opt-out path</p>
+          </div>
+        </div>
+      </aside>
+    </div>
   </div>
 </div>
 
@@ -160,6 +276,179 @@
 
 {% block scripts %}
 <script>
+{% raw %}
+  let templateButtonId = 0;
+  let lastVariableKey = '';
+
+  function closeTemplateModal() {
+    document.getElementById('new-modal').classList.add('hidden');
+  }
+
+  function escapeHtml(value) {
+    const node = document.createElement('div');
+    node.textContent = value || '';
+    return node.innerHTML;
+  }
+
+  function onCategoryChange() {
+    const category = document.querySelector('input[name="category"]:checked').value;
+    document.getElementById('marketing-note').classList.toggle('hidden', category !== 'MARKETING');
+    document.getElementById('category-note').textContent = category === 'MARKETING'
+      ? 'Only send marketing templates to contacts with recorded marketing consent.'
+      : 'Utility content must relate to a transaction or request from the customer.';
+    refreshTemplateForm();
+  }
+
+  function toggleHeaderField() {
+    const isText = document.getElementById('header-type').value === 'TEXT';
+    document.getElementById('header-text-wrap').classList.toggle('hidden', !isText);
+    refreshTemplateForm();
+  }
+
+  function insertBodyVariable() {
+    const body = document.getElementById('tpl-body');
+    const matches = [...body.value.matchAll(/\{\{(\d+)\}\}/g)].map(match => Number(match[1]));
+    const next = matches.length ? Math.max(...matches) + 1 : 1;
+    const token = `{{${next}}}`;
+    const start = body.selectionStart;
+    body.value = body.value.slice(0, start) + token + body.value.slice(body.selectionEnd);
+    body.selectionStart = body.selectionEnd = start + token.length;
+    body.focus();
+    refreshTemplateForm();
+  }
+
+  function collectExampleValues() {
+    const values = {};
+    document.querySelectorAll('.body-example-input').forEach(input => {
+      values[input.dataset.number] = input.value;
+    });
+    return values;
+  }
+
+  function renderBodyExamples(numbers) {
+    const key = numbers.join(',');
+    if (key === lastVariableKey) return;
+    const previous = collectExampleValues();
+    const section = document.getElementById('body-examples-section');
+    const fields = document.getElementById('body-example-fields');
+    if (!numbers.length) {
+      section.classList.add('hidden');
+      fields.innerHTML = '';
+    } else {
+      fields.innerHTML = numbers.map(number => `
+        <label class="flex items-center gap-2">
+          <code class="w-10 text-xs font-semibold text-amber-800">{{${number}}}</code>
+          <input type="text" data-number="${number}" value="${escapeHtml(previous[number] || '')}"
+            class="body-example-input flex-1 border border-amber-200 bg-white rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
+            placeholder="Sample value for {{${number}}}" oninput="refreshTemplateForm()">
+        </label>`).join('');
+      section.classList.remove('hidden');
+    }
+    lastVariableKey = key;
+  }
+
+  function addTemplateButton(type, data={}) {
+    const container = document.getElementById('template-buttons');
+    if (container.children.length >= 3) {
+      showToast('A template can have up to three buttons in this form.', false);
+      return;
+    }
+    const id = ++templateButtonId;
+    const row = document.createElement('div');
+    row.id = `template-button-${id}`;
+    row.className = 'template-button-row grid grid-cols-[7rem_minmax(0,1fr)_2rem] gap-2 rounded-xl border border-gray-200 bg-gray-50 p-2';
+    row.innerHTML = `
+      <select class="button-type border border-gray-200 bg-white rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-teal-400" onchange="updateButtonRow(${id})">
+        <option value="QUICK_REPLY" ${type === 'QUICK_REPLY' ? 'selected' : ''}>Quick reply</option>
+        <option value="URL" ${type === 'URL' ? 'selected' : ''}>Website</option>
+        <option value="PHONE_NUMBER" ${type === 'PHONE_NUMBER' ? 'selected' : ''}>Call</option>
+      </select>
+      <div class="space-y-2 min-w-0">
+        <input type="text" maxlength="25" class="button-text w-full border border-gray-200 bg-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-teal-400" placeholder="Button label" value="${escapeHtml(data.text || '')}" oninput="refreshTemplateForm()">
+        <input type="text" class="button-value hidden w-full border border-gray-200 bg-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-teal-400" oninput="refreshTemplateForm()">
+      </div>
+      <button type="button" onclick="removeTemplateButton(${id})" aria-label="Remove button" class="text-gray-400 hover:text-red-500"><i class="fas fa-times"></i></button>`;
+    container.appendChild(row);
+    const value = row.querySelector('.button-value');
+    value.value = type === 'URL' ? (data.url || '') : (data.phone_number || '');
+    updateButtonRow(id);
+  }
+
+  function updateButtonRow(id) {
+    const row = document.getElementById(`template-button-${id}`);
+    const type = row.querySelector('.button-type').value;
+    const value = row.querySelector('.button-value');
+    value.classList.toggle('hidden', type === 'QUICK_REPLY');
+    value.placeholder = type === 'URL' ? 'https://example.com' : 'International number, e.g. +919344064631';
+    refreshTemplateForm();
+  }
+
+  function removeTemplateButton(id) {
+    document.getElementById(`template-button-${id}`)?.remove();
+    refreshTemplateForm();
+  }
+
+  function serializeButtons() {
+    return [...document.querySelectorAll('.template-button-row')].map(row => {
+      const type = row.querySelector('.button-type').value;
+      const button = {type, text: row.querySelector('.button-text').value.trim()};
+      const value = row.querySelector('.button-value').value.trim();
+      if (type === 'URL') button.url = value;
+      if (type === 'PHONE_NUMBER') button.phone_number = value;
+      return button;
+    });
+  }
+
+  function refreshTemplateForm() {
+    const body = document.getElementById('tpl-body').value;
+    const numbers = [...new Set([...body.matchAll(/\{\{(\d+)\}\}/g)].map(match => Number(match[1])))].sort((a, b) => a - b);
+    renderBodyExamples(numbers);
+    const examples = numbers.map(number => document.querySelector(`.body-example-input[data-number="${number}"]`)?.value.trim() || '');
+    const buttons = serializeButtons();
+    document.getElementById('body-examples-json').value = JSON.stringify(examples);
+    document.getElementById('buttons-json').value = JSON.stringify(buttons);
+
+    const header = document.getElementById('header-text').value;
+    const footer = document.getElementById('tpl-footer').value;
+    document.getElementById('header-count').textContent = `${header.length}/60`;
+    document.getElementById('body-count').textContent = `${body.length}/1024`;
+    document.getElementById('footer-count').textContent = footer.length;
+
+    const previewHeader = document.getElementById('preview-header');
+    const showHeader = document.getElementById('header-type').value === 'TEXT' && header;
+    previewHeader.textContent = header;
+    previewHeader.classList.toggle('hidden', !showHeader);
+
+    let previewBody = body || 'Your message preview appears here.';
+    numbers.forEach((number, index) => {
+      previewBody = previewBody.replaceAll(`{{${number}}}`, examples[index] || `{{${number}}}`);
+    });
+    document.getElementById('preview-body').textContent = previewBody;
+    const previewFooter = document.getElementById('preview-footer');
+    previewFooter.textContent = footer;
+    previewFooter.classList.toggle('hidden', !footer);
+    document.getElementById('preview-buttons').innerHTML = buttons
+      .filter(button => button.text)
+      .map(button => `<div class="border-t border-teal-200/70 pt-1.5 text-center text-xs font-medium text-blue-600">
+        <i class="fas ${button.type === 'URL' ? 'fa-external-link-alt' : button.type === 'PHONE_NUMBER' ? 'fa-phone' : 'fa-reply'} mr-1"></i>${escapeHtml(button.text)}
+      </div>`).join('');
+  }
+
+  function loadBrandAwarenessPreset() {
+    document.getElementById('tpl-name').value = 'viviz_brand_awareness';
+    document.querySelector('input[name="category"][value="MARKETING"]').checked = true;
+    document.getElementById('header-type').value = 'TEXT';
+    document.getElementById('header-text').value = 'Grow with Viviz Technologies';
+    document.getElementById('tpl-body').value = 'Discover practical digital solutions designed to help your business connect with customers, streamline communication, and grow online. Learn how Viviz Technologies can support your next project at viviz.in.';
+    document.getElementById('tpl-footer').value = 'Reply STOP MARKETING to opt out.';
+    document.getElementById('template-buttons').innerHTML = '';
+    addTemplateButton('URL', {text: 'Learn more', url: 'https://viviz.in'});
+    addTemplateButton('QUICK_REPLY', {text: 'Stop marketing'});
+    toggleHeaderField();
+    onCategoryChange();
+    refreshTemplateForm();
+  }
+
   function showToast(msg, ok=true) {
     const t = document.getElementById('toast');
     document.getElementById('toast-msg').textContent = msg;
@@ -174,15 +463,22 @@
     const form = document.getElementById('tpl-form');
     const errEl = document.getElementById('tpl-error');
     errEl.classList.add('hidden');
+    refreshTemplateForm();
+    if (!form.reportValidity()) return;
 
     const cb = document.getElementById('submit-meta-cb');
     const fd = new FormData(form);
     if (!cb.checked) fd.set('submit_to_meta', 'false');
 
+    const button = document.getElementById('save-template-btn');
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
     const r = await fetch('/templates/create', {method: 'POST', body: fd});
-    const data = await r.json();
+    const data = await r.json().catch(() => ({}));
+    button.disabled = false;
+    button.innerHTML = '<i class="fas fa-save"></i> Save template';
     if (r.ok) {
-      document.getElementById('new-modal').classList.add('hidden');
+      closeTemplateModal();
       const msg = data.status === 'submitted'
         ? `Submitted to Meta! Status: ${data.meta_status}`
         : 'Template saved as local draft.';
@@ -193,6 +489,14 @@
       errEl.classList.remove('hidden');
     }
   }
+
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closeTemplateModal();
+  });
+
+  onCategoryChange();
+  toggleHeaderField();
+  refreshTemplateForm();
 
   async function submitToMeta(id, btn) {
     if (!confirm('Submit this template to Meta for approval?')) return;
@@ -218,5 +522,6 @@
       setTimeout(() => location.reload(), 1000);
     }
   }
+{% endraw %}
 </script>
 {% endblock %}

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, Depends, Form, HTTPException, File, Uplo
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, delete
 from sqlalchemy.orm import joinedload
 from app.database import get_db
 from app.models.contact import Contact
@@ -10,6 +10,7 @@ from app.models.conversation import Conversation, Message, MessageDirection, Mes
 from app.services.whatsapp import whatsapp
 from app.services.media_validation import validate_media_upload
 from app.services.ai import generate_reply
+from app.services.audit import log_event
 from datetime import datetime, timedelta
 import httpx
 from urllib.parse import quote
@@ -360,6 +361,49 @@ async def close_conversation(conv_id: int, request: Request, db: AsyncSession = 
     if conv:
         conv.status = "closed"
     return JSONResponse({"status": "closed"})
+
+
+@router.delete("/{conv_id}")
+async def delete_conversation(conv_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    """Permanently remove one local conversation while retaining the contact and audit evidence."""
+    if not _auth(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    conv = (await db.execute(select(Conversation).where(Conversation.id == conv_id))).scalar_one_or_none()
+    if not conv:
+        return JSONResponse({"error": "Conversation not found"}, status_code=404)
+
+    message_count = (await db.execute(
+        select(func.count(Message.id)).where(Message.conversation_id == conv_id)
+    )).scalar() or 0
+    media_count = (await db.execute(
+        select(func.count(Message.id)).where(
+            Message.conversation_id == conv_id,
+            Message.media_id.is_not(None),
+        )
+    )).scalar() or 0
+
+    await log_event(
+        db,
+        actor=request.session.get("admin_email", "admin"),
+        action="conversation_delete",
+        target_type="conversation",
+        target_id=conv_id,
+        meta={
+            "contact_id": conv.contact_id,
+            "message_count": message_count,
+            "media_count": media_count,
+        },
+    )
+    await db.execute(delete(Message).where(Message.conversation_id == conv_id))
+    await db.execute(delete(Conversation).where(Conversation.id == conv_id))
+    await db.commit()
+
+    return JSONResponse({
+        "status": "deleted",
+        "conversation_id": conv_id,
+        "messages_deleted": message_count,
+    })
 
 
 @router.post("/{conv_id}/assign")

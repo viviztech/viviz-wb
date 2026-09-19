@@ -41,6 +41,7 @@
       <a href="#how-it-works" class="hover:text-green-600 transition">How it works</a>
       <a href="#pricing" class="hover:text-green-600 transition">Pricing</a>
       <a href="#contact" class="hover:text-green-600 transition">Contact</a>
+      <a href="/privacy" class="hover:text-green-600 transition">Trust center</a>
     </div>
     <a href="/login"
       class="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition">
@@ -68,7 +69,7 @@
         at Scale
       </h1>
       <p class="text-green-100 text-lg mb-8 leading-relaxed">
-        Send bulk campaigns, automate replies, manage contacts, and track delivery — all from one powerful dashboard built on Meta's official API.
+        Send compliant campaigns to opted-in customers, automate replies, manage contacts, and track delivery — all from one dashboard built on Meta's official API.
       </p>
       <div class="flex flex-wrap gap-3">
         <a href="#contact"
@@ -268,7 +269,7 @@
       </div>
       {% endfor %}
     </div>
-    <p class="text-center text-xs text-gray-400 mt-6">All plans include free onboarding support. WhatsApp conversation fees billed separately by Meta (₹0.39–₹0.58 per marketing conversation for India).</p>
+    <p class="text-center text-xs text-gray-400 mt-6">All plans include onboarding support. Meta messaging charges are separate and vary by message category and recipient market; review Meta's current rate card before sending.</p>
   </div>
 </section>
 
@@ -381,7 +382,7 @@
           class="w-full wa-gradient text-white font-bold py-3 rounded-xl hover:opacity-90 transition flex items-center justify-center gap-2 shadow-lg">
           <i class="fas fa-paper-plane"></i> Request Free Demo
         </button>
-        <p class="text-xs text-gray-400 text-center">By submitting, you agree to be contacted by our team. No spam, ever.</p>
+        <p class="text-xs text-gray-400 text-center">By submitting, you agree that we may use these details to respond to your request. See our <a href="/privacy" class="text-green-700 hover:underline">Privacy Policy</a> and <a href="/terms" class="text-green-700 hover:underline">Terms</a>.</p>
       </form>
       {% endif %}
     </div>
@@ -390,17 +391,27 @@
 
 <!-- ── Footer ── -->
 <footer class="bg-gray-900 text-gray-400 py-10">
-  <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4">
-    <div class="flex items-center gap-2.5">
-      <div class="w-8 h-8 rounded-lg wa-gradient flex items-center justify-center">
-        <i class="fab fa-whatsapp text-white"></i>
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 grid md:grid-cols-[1fr_auto] items-center gap-7">
+    <div>
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg wa-gradient flex items-center justify-center">
+          <i class="fab fa-whatsapp text-white"></i>
+        </div>
+        <span class="text-white font-bold text-sm">Viviz WhatsApp Business</span>
       </div>
-      <span class="text-white font-bold text-sm">Viviz WhatsApp Business</span>
+      <p class="text-xs mt-2">Uses <span class="text-green-400 font-medium">Meta WhatsApp Cloud API</span>. Meta and WhatsApp are trademarks of Meta Platforms, Inc.</p>
+      <p class="text-[11px] text-gray-500 mt-1">© 2026 Viviz Technologies. All rights reserved.</p>
     </div>
-    <p class="text-xs text-center">Built on <span class="text-green-400 font-medium">Meta WhatsApp Cloud API</span> · Official Partner Technology</p>
-    <a href="/login" class="text-xs text-green-400 hover:text-green-300 transition font-medium flex items-center gap-1">
-      <i class="fas fa-lock text-xs"></i> Admin Login
-    </a>
+    <div class="flex flex-wrap justify-center md:justify-end gap-x-5 gap-y-2 text-xs">
+      <a href="/privacy" class="hover:text-white transition">Privacy</a>
+      <a href="/terms" class="hover:text-white transition">Terms</a>
+      <a href="/data-deletion" class="hover:text-white transition">Data deletion</a>
+      <a href="/support" class="hover:text-white transition">Support</a>
+      <a href="https://viviz.in/refund" class="hover:text-white transition" rel="noopener">Refund policy</a>
+      <a href="/login" class="text-green-400 hover:text-green-300 transition font-medium">
+        <i class="fas fa-lock text-xs mr-1"></i>Admin login
+      </a>
+    </div>
   </div>
 </footer>
 

@@ -21,9 +21,9 @@ class Settings(BaseSettings):
     admin_password: str = "Admin@1234"
     debug: bool = False
     allowed_origins: str = "https://wb.viviz.in"
-    privacy_policy_url: str = ""
-    support_email: str = ""
-    support_phone: str = ""
+    privacy_policy_url: str = "https://meta.viviz.in/privacy"
+    support_email: str = "online@viviz.in"
+    support_phone: str = "+91 93440 64631"
     whatsapp_business_phone: str = ""
     marketing_max_messages_per_7_days: int = 2
 

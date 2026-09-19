@@ -8,6 +8,7 @@ from slowapi.util import get_remote_address
 import logging
 
 from app.database import get_db
+from app.config import settings
 from app.models.admin import Admin
 from app.models.lead import Lead
 
@@ -24,7 +25,42 @@ limiter = Limiter(key_func=get_remote_address)
 async def root(request: Request):
     if request.session.get("admin_email"):
         return RedirectResponse("/dashboard", status_code=302)
-    return templates.TemplateResponse("dashboard/login.html", {"request": request})
+    return templates.TemplateResponse("landing.html", {"request": request})
+
+
+def _public_context(request: Request, legal_page: str) -> dict:
+    return {
+        "request": request,
+        "legal_page": legal_page,
+        "business_name": settings.business_name or "Viviz Technologies",
+        "support_email": settings.support_email or "online@viviz.in",
+        "support_phone": settings.support_phone or "+91 93440 64631",
+        "business_address": (
+            "2/13/3, Sri Sathyam Nagar, Lalgudi, Thalakudi, "
+            "Tiruchirappalli - 621216, Tamil Nadu, India"
+        ),
+        "last_updated": "19 September 2026",
+    }
+
+
+@router.get("/privacy", response_class=HTMLResponse)
+async def privacy_policy(request: Request):
+    return templates.TemplateResponse("legal.html", _public_context(request, "privacy"))
+
+
+@router.get("/terms", response_class=HTMLResponse)
+async def terms_and_conditions(request: Request):
+    return templates.TemplateResponse("legal.html", _public_context(request, "terms"))
+
+
+@router.get("/data-deletion", response_class=HTMLResponse)
+async def data_deletion(request: Request):
+    return templates.TemplateResponse("legal.html", _public_context(request, "data-deletion"))
+
+
+@router.get("/support", response_class=HTMLResponse)
+async def public_support(request: Request):
+    return templates.TemplateResponse("legal.html", _public_context(request, "support"))
 
 
 @router.post("/leads")

@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  {% if legal_page == "privacy" %}
+  <title>Privacy Policy — Viviz WhatsApp Business</title>
+  <meta name="description" content="How Viviz WhatsApp Business collects, uses, shares, and protects personal data."/>
+  {% elif legal_page == "terms" %}
+  <title>Terms and Conditions — Viviz WhatsApp Business</title>
+  <meta name="description" content="Terms governing use of the Viviz WhatsApp Business platform."/>
+  {% elif legal_page == "data-deletion" %}
+  <title>Data Deletion Instructions — Viviz WhatsApp Business</title>
+  <meta name="description" content="How to request access, export, correction, or deletion of data held by Viviz WhatsApp Business."/>
+  {% else %}
+  <title>Support — Viviz WhatsApp Business</title>
+  <meta name="description" content="Contact and support information for Viviz WhatsApp Business."/>
+  {% endif %}
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css"/>
+  <style>
+    :root { --ink: #102a2a; --pine: #075e54; --mint: #25d366; --paper: #f7faf8; }
+    body { color: var(--ink); background: var(--paper); }
+    .legal-copy h2 { font-size: 1.2rem; line-height: 1.5; font-weight: 750; margin: 2.25rem 0 .75rem; color: #0b3b36; }
+    .legal-copy h3 { font-size: 1rem; line-height: 1.5; font-weight: 700; margin: 1.5rem 0 .5rem; color: #155e55; }
+    .legal-copy p { margin: .75rem 0; line-height: 1.8; color: #4b635f; }
+    .legal-copy ul, .legal-copy ol { margin: .75rem 0; padding-left: 1.35rem; color: #4b635f; }
+    .legal-copy li { margin: .45rem 0; line-height: 1.7; }
+    .legal-copy ul { list-style: disc; }
+    .legal-copy ol { list-style: decimal; }
+    .legal-copy a { color: #087f6f; text-decoration: underline; text-underline-offset: 3px; }
+    .trust-grid { background-image: linear-gradient(rgba(7,94,84,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(7,94,84,.05) 1px, transparent 1px); background-size: 28px 28px; }
+    :focus-visible { outline: 3px solid #25d366; outline-offset: 3px; }
+  </style>
+</head>
+<body class="antialiased">
+  <header class="bg-white/95 backdrop-blur border-b border-emerald-900/10 sticky top-0 z-30">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+      <a href="/" class="flex items-center gap-2.5" aria-label="Viviz WhatsApp Business home">
+        <span class="w-9 h-9 rounded-xl bg-gradient-to-br from-[#075E54] to-[#25D366] flex items-center justify-center shadow-sm">
+          <i class="fab fa-whatsapp text-white text-xl" aria-hidden="true"></i>
+        </span>
+        <span>
+          <span class="font-bold text-sm block leading-tight">Viviz WhatsApp</span>
+          <span class="text-[11px] text-emerald-700 block">Business Platform</span>
+        </span>
+      </a>
+      <nav class="hidden md:flex items-center gap-5 text-sm text-slate-600" aria-label="Trust center">
+        <a href="/privacy" class="hover:text-emerald-700 {% if legal_page == 'privacy' %}font-semibold text-emerald-800{% endif %}">Privacy</a>
+        <a href="/terms" class="hover:text-emerald-700 {% if legal_page == 'terms' %}font-semibold text-emerald-800{% endif %}">Terms</a>
+        <a href="/data-deletion" class="hover:text-emerald-700 {% if legal_page == 'data-deletion' %}font-semibold text-emerald-800{% endif %}">Data deletion</a>
+        <a href="/support" class="hover:text-emerald-700 {% if legal_page == 'support' %}font-semibold text-emerald-800{% endif %}">Support</a>
+      </nav>
+      <a href="/login" class="text-sm font-semibold text-emerald-800 hover:text-emerald-600">Admin login <i class="fas fa-arrow-right ml-1 text-xs" aria-hidden="true"></i></a>
+    </div>
+  </header>
+
+  <main>
+    <section class="trust-grid border-b border-emerald-900/10">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 py-14 md:py-20">
+        <div class="max-w-3xl">
+          <p class="uppercase tracking-[.22em] text-xs font-bold text-emerald-700 mb-4">Viviz Trust Center</p>
+          {% if legal_page == "privacy" %}
+          <h1 class="text-4xl md:text-6xl font-black tracking-tight text-[#102a2a]">Privacy, explained plainly.</h1>
+          <p class="mt-5 text-lg text-slate-600 leading-relaxed">What we collect, why we need it, who receives it, and the choices available to businesses and WhatsApp users.</p>
+          {% elif legal_page == "terms" %}
+          <h1 class="text-4xl md:text-6xl font-black tracking-tight text-[#102a2a]">Terms and conditions.</h1>
+          <p class="mt-5 text-lg text-slate-600 leading-relaxed">The rules for using the platform responsibly, including messaging consent, account security, billing, and third-party services.</p>
+          {% elif legal_page == "data-deletion" %}
+          <h1 class="text-4xl md:text-6xl font-black tracking-tight text-[#102a2a]">Your data, your request.</h1>
+          <p class="mt-5 text-lg text-slate-600 leading-relaxed">Clear instructions for requesting a copy, correction, or deletion of personal data associated with this platform.</p>
+          {% else %}
+          <h1 class="text-4xl md:text-6xl font-black tracking-tight text-[#102a2a]">Get the right help.</h1>
+          <p class="mt-5 text-lg text-slate-600 leading-relaxed">Contact the Viviz team for platform, privacy, billing, security, or WhatsApp integration support.</p>
+          {% endif %}
+          <div class="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-500">
+            <span><i class="far fa-calendar-check mr-1.5 text-emerald-600" aria-hidden="true"></i>Last updated {{ last_updated }}</span>
+            <span><i class="fas fa-building mr-1.5 text-emerald-600" aria-hidden="true"></i>{{ business_name }}</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="max-w-6xl mx-auto px-4 sm:px-6 py-10 md:py-14 grid lg:grid-cols-[240px_minmax(0,1fr)] gap-10">
+      <aside class="lg:sticky lg:top-24 lg:self-start">
+        <p class="text-[11px] uppercase tracking-[.18em] font-bold text-slate-400 mb-3">Trust documents</p>
+        <div class="bg-white border border-slate-200 rounded-2xl p-2 shadow-sm">
+          {% for path, icon, label, key in [
+            ('/privacy', 'fa-shield-halved', 'Privacy Policy', 'privacy'),
+            ('/terms', 'fa-file-contract', 'Terms & Conditions', 'terms'),
+            ('/data-deletion', 'fa-user-xmark', 'Data Deletion', 'data-deletion'),
+            ('/support', 'fa-life-ring', 'Support', 'support')
+          ] %}
+          <a href="{{ path }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition {% if legal_page == key %}bg-emerald-50 text-emerald-800 font-semibold{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+            <i class="fas {{ icon }} w-4 text-center {% if legal_page == key %}text-emerald-600{% else %}text-slate-400{% endif %}" aria-hidden="true"></i>{{ label }}
+          </a>
+          {% endfor %}
+        </div>
+        <div class="mt-5 px-4 py-4 rounded-2xl bg-[#075E54] text-white">
+          <p class="text-xs font-semibold text-emerald-200">Questions?</p>
+          <a href="mailto:{{ support_email }}" class="text-sm font-bold mt-1 block break-all hover:underline">{{ support_email }}</a>
+        </div>
+      </aside>
+
+      <article class="legal-copy bg-white border border-slate-200 rounded-3xl px-6 py-7 md:px-12 md:py-10 shadow-sm min-w-0">
+        {% if legal_page == "privacy" %}
+        <p><strong>{{ business_name }}</strong> ("Viviz", "we", "us", or "our") operates the Viviz WhatsApp Business Platform at <strong>meta.viviz.in</strong>. This policy applies to the public website, demonstration requests, platform accounts, and WhatsApp communications processed through the service.</p>
+
+        <h2>1. Who is responsible for the data</h2>
+        <p>Viviz operates the platform and is responsible for data collected directly through this website and for its own business communications. When a customer business uses the platform to communicate with its contacts, that business determines the purpose and audience of those messages and is responsible for its notices, lawful basis, opt-ins, and campaign content. Viviz processes that data to provide the service.</p>
+
+        <h2>2. Information we collect</h2>
+        <ul>
+          <li><strong>Demo and business enquiries:</strong> name, business name, phone number, email, industry, expected message volume, and enquiry text.</li>
+          <li><strong>WhatsApp contact data:</strong> phone number, WhatsApp ID, profile name, optional email, tags, notes, block state, and last interaction time.</li>
+          <li><strong>Communications:</strong> inbound and outbound message content, message type, timestamps, delivery/read/failure status, template name, captions, and media references.</li>
+          <li><strong>Consent records:</strong> message category, disclosure shown, grant or withdrawal, source, timestamp, evidence, and proof reference.</li>
+          <li><strong>Campaign and service data:</strong> recipient selection, campaign status, scheduled/sent times, suppressions, errors, and template metadata.</li>
+          <li><strong>Account and security data:</strong> administrator identity, session cookie, login/audit events, request metadata, and technical logs used to protect and operate the service.</li>
+        </ul>
+
+        <h2>3. Where information comes from</h2>
+        <p>Information may come from you, the business using the platform, a WhatsApp interaction, a website or offline opt-in form, a permitted CRM/CSV import, Meta webhooks, or service providers used to deliver the platform.</p>
+
+        <h2>4. How we use information</h2>
+        <ul>
+          <li>Provide conversations, templates, broadcasts, automation, analytics, and customer support.</li>
+          <li>Authenticate administrators, secure accounts, prevent abuse, and maintain audit records.</li>
+          <li>Record and enforce opt-in, opt-out, block, template, frequency, and quality controls.</li>
+          <li>Process demo requests and communicate about requested products or services.</li>
+          <li>Diagnose failures, maintain availability, comply with law, and enforce our terms.</li>
+          <li>Generate or classify replies when an authorized business enables AI features.</li>
+        </ul>
+
+        <h2>5. WhatsApp messaging and consent</h2>
+        <p>Businesses may send messages only to people who provided their number and the permission required for the message category. A support enquiry does not by itself grant marketing consent. Users may send <strong>STOP MARKETING</strong>, <strong>STOP UPDATES</strong>, or <strong>STOP</strong> to withdraw messaging permissions. We and platform customers must also honor valid opt-out requests received through other channels.</p>
+
+        <h2>6. How information is shared</h2>
+        <p>We do not sell personal information. We share it only as needed with:</p>
+        <ul>
+          <li><strong>Meta and WhatsApp</strong> to deliver messages, templates, media, status events, and account-quality functions.</li>
+          <li><strong>Infrastructure providers</strong> that host the application, database, backups, monitoring, and network services.</li>
+          <li><strong>Amazon Web Services</strong> when media storage is configured.</li>
+          <li><strong>Anthropic</strong> when an authorized business enables AI reply, classification, or summarization features; relevant message text and limited conversation context may be sent for that purpose.</li>
+          <li><strong>Professional advisers or authorities</strong> when reasonably necessary to protect rights, investigate abuse, or meet a legal obligation.</li>
+          <li><strong>A successor organization</strong> during a merger, acquisition, or transfer, subject to appropriate safeguards.</li>
+        </ul>
+
+        <h2>7. International processing</h2>
+        <p>Meta, cloud, storage, and AI providers may process information in countries other than yours. Where required, the responsible business must use appropriate contractual and legal safeguards for those transfers.</p>
+
+        <h2>8. Retention</h2>
+        <p>We keep information only for as long as needed to provide the service, maintain security and consent evidence, resolve disputes, meet contractual or legal duties, and operate backups. Retention can vary by data type and customer agreement. Deletion from active systems may not immediately remove limited records from protected backups, security logs, fraud-prevention records, or legally required archives.</p>
+
+        <h2>9. Your choices and rights</h2>
+        <p>Subject to applicable law, you may request access, correction, export, restriction, objection, or deletion. You may also withdraw consent without affecting earlier lawful processing. Use our <a href="/data-deletion">Data Deletion Instructions</a> or contact <a href="mailto:{{ support_email }}">{{ support_email }}</a>. We may verify your identity and ask the relevant customer business to handle a request when it controls the communication.</p>
+
+        <h2>10. Cookies and security</h2>
+        <p>The public pages do not use advertising cookies. The administrator area uses a secure session cookie required for login. We use access controls, encrypted transport, webhook signatures, rate limits, audit trails, and credential controls, but no online service can guarantee absolute security.</p>
+
+        <h2>11. Children</h2>
+        <p>The platform is intended for businesses and is not directed to children. Customers must not use it to collect or send marketing to children in breach of applicable law or Meta policy.</p>
+
+        <h2>12. Changes and contact</h2>
+        <p>We may update this policy when the service, law, or providers change. The revision date appears at the top. Questions or complaints may be sent to <a href="mailto:{{ support_email }}">{{ support_email }}</a>, by phone at <a href="tel:{{ support_phone|replace(' ', '') }}">{{ support_phone }}</a>, or by post to {{ business_address }}.</p>
+
+        {% elif legal_page == "terms" %}
+        <p>These Terms and Conditions govern access to and use of the Viviz WhatsApp Business Platform. By creating an account, signing an order, or using the service, the customer agrees to these terms, the applicable proposal or order, our <a href="/privacy">Privacy Policy</a>, and Meta's applicable WhatsApp terms and policies.</p>
+
+        <h2>1. Eligibility and authority</h2>
+        <p>You must be legally able to contract and authorized to act for the business named on the account. You are responsible for accurate registration, business-verification, billing, support, and WhatsApp asset information.</p>
+
+        <h2>2. Account security</h2>
+        <p>You must protect administrator credentials, access tokens, app secrets, two-factor authentication, and recovery methods. Notify us promptly of suspected compromise. Actions taken through your account are treated as authorized until access is suspended or credentials are rotated.</p>
+
+        <h2>3. Permitted use</h2>
+        <p>Use the service only for lawful business communications and in accordance with the WhatsApp Business Messaging Policy, Commerce Policy, applicable privacy/marketing law, and this agreement. You must not:</p>
+        <ul>
+          <li>Send spam, deceptive messages, purchased-list campaigns, or messages without required consent.</li>
+          <li>Ignore opt-outs, blocks, age/country restrictions, or Meta enforcement.</li>
+          <li>Use the platform for illegal, prohibited, or unsupported regulated goods or services.</li>
+          <li>Upload malware, probe security, bypass restrictions, scrape the service, or interfere with other users.</li>
+          <li>Misrepresent your identity, affiliation, offers, pricing, or message purpose.</li>
+        </ul>
+
+        <h2>4. Customer data and messaging responsibility</h2>
+        <p>You control your contact lists, content, templates, campaigns, and instructions. You must have the right to provide all uploaded data and must maintain evidence of required WhatsApp opt-ins. You are responsible for message accuracy, audience selection, local-law compliance, customer support, and honoring requests for access, correction, deletion, or opt-out.</p>
+
+        <h2>5. Meta and third-party services</h2>
+        <p>The platform depends on Meta/WhatsApp, hosting, network, storage, and optional AI services. Their terms, eligibility decisions, outages, pricing, API changes, template reviews, quality controls, and account restrictions are outside our control. We do not guarantee Meta approval, message delivery, read rates, or continued availability of any third-party feature.</p>
+
+        <h2>6. Fees and billing</h2>
+        <p>Platform fees, billing frequency, taxes, included usage, and payment terms are stated in the applicable order or proposal. Meta messaging charges and third-party fees are separate unless the order expressly says otherwise. Late or failed payment may result in suspension. Refund and cancellation rules are described in the applicable order and our <a href="https://viviz.in/refund" rel="noopener">Refund Policy</a>.</p>
+
+        <h2>7. AI-assisted features</h2>
+        <p>AI output can be inaccurate or inappropriate. You must review configurations and remain responsible for messages sent on your behalf. Do not submit sensitive information to AI features unless authorized and appropriate safeguards are in place.</p>
+
+        <h2>8. Intellectual property</h2>
+        <p>Viviz and its licensors retain rights in the platform, software, branding, and documentation. You retain rights in your business content and data. You grant us the limited rights required to host, process, transmit, back up, and display that content to provide and secure the service.</p>
+
+        <h2>9. Availability and changes</h2>
+        <p>We aim to operate a reliable service but do not promise uninterrupted or error-free availability unless a signed service-level agreement says otherwise. We may change features to address security, law, Meta requirements, abuse, performance, or product development.</p>
+
+        <h2>10. Suspension and termination</h2>
+        <p>We may restrict or suspend access for security risk, non-payment, unlawful activity, policy violations, excessive abuse complaints, or Meta restrictions. On termination, fees already due remain payable. Data export and deletion are handled under the agreement, Privacy Policy, and applicable law.</p>
+
+        <h2>11. Warranties and liability</h2>
+        <p>The service is provided on an "as available" basis to the extent permitted by law. We disclaim implied warranties not expressly stated in a signed agreement. To the maximum extent permitted by law, neither party is liable for indirect, incidental, special, or consequential loss. Viviz's aggregate liability for the service will not exceed the amount paid for the affected service during the three months before the event giving rise to the claim, except where applicable law does not allow that limitation.</p>
+
+        <h2>12. Indemnity</h2>
+        <p>You will defend and indemnify Viviz against third-party claims arising from your unlawful content, contact lists, campaigns, missing consent, misuse of the service, or violation of Meta policy, except to the extent caused by Viviz's breach or unlawful conduct.</p>
+
+        <h2>13. Governing law and changes</h2>
+        <p>These terms are governed by the laws of India. Courts in Tiruchirappalli, Tamil Nadu have exclusive jurisdiction, subject to any mandatory law. A signed order or service agreement controls if it conflicts with these website terms. We may update these terms prospectively; the date above identifies the current version.</p>
+
+        <h2>14. Contact</h2>
+        <p>Questions about these terms may be sent to <a href="mailto:{{ support_email }}">{{ support_email }}</a> or mailed to {{ business_address }}.</p>
+
+        {% elif legal_page == "data-deletion" %}
+        <p>You can request access to, export of, correction of, or deletion of personal data associated with Viviz WhatsApp Business. Sending <strong>STOP</strong> opts you out of WhatsApp messaging; it does not by itself request deletion of historical data.</p>
+
+        <h2>1. Submit a request</h2>
+        <p>Email <a href="mailto:{{ support_email }}?subject=WhatsApp%20data%20request">{{ support_email }}</a> with the subject <strong>WhatsApp data request</strong>. Include:</p>
+        <ul>
+          <li>Your full name and WhatsApp phone number, including country code.</li>
+          <li>The business name that contacted you, if different from {{ business_name }}.</li>
+          <li>Whether you want access, export, correction, restriction, or deletion.</li>
+          <li>A description of the relevant interaction and any information needed to locate it.</li>
+        </ul>
+        <div class="my-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4">
+          <p class="m-0 text-sm text-emerald-900"><strong>Do not email passwords, access tokens, full payment-card numbers, government ID numbers, or message content that is not needed to identify the request.</strong></p>
+        </div>
+
+        <h2>2. Identity and authority checks</h2>
+        <p>We will verify enough information to prevent unauthorized access or deletion. We may ask you to confirm control of the phone number or email, or may refer the request to the customer business that controls the WhatsApp communication. Authorized representatives must provide proof of authority.</p>
+
+        <h2>3. What deletion covers</h2>
+        <p>After a valid request is approved, deletion may include the active contact profile, conversation and message records, media references, broadcast-recipient history, automation enrollment/state, notes/tags, and consent-event records associated with the contact.</p>
+
+        <h2>4. Information that may remain</h2>
+        <p>Limited information may be retained where necessary for security, fraud prevention, dispute resolution, accounting, legal obligations, proof that an opt-out was honored, or protected backups. Webhook/security/audit logs may retain limited event information for those purposes. Retained data is restricted from ordinary campaign use and removed or anonymized when the applicable need or retention period ends.</p>
+
+        <h2>5. Timing and outcome</h2>
+        <p>We will acknowledge the request and provide the expected completion timing based on the request, applicable law, and whether another customer business must respond. We will confirm completion or explain any lawful exception or additional verification needed.</p>
+
+        <h2>6. Meta or WhatsApp account data</h2>
+        <p>This process covers data controlled through the Viviz platform. To delete information held independently by Meta or WhatsApp, use the privacy and account controls provided by Meta/WhatsApp. Deleting Viviz records does not delete your WhatsApp account.</p>
+
+        <h2>7. Messaging opt-out</h2>
+        <p>For immediate messaging preference changes, reply <strong>STOP MARKETING</strong>, <strong>STOP UPDATES</strong>, or <strong>STOP</strong> in WhatsApp. You can still make a separate data request using the email process above.</p>
+
+        {% else %}
+        <p>Use the channel below that best matches your issue. Never send passwords, access tokens, Meta App Secrets, full payment details, or other sensitive credentials by email.</p>
+
+        <div class="grid sm:grid-cols-2 gap-4 my-8">
+          <a href="mailto:{{ support_email }}" class="!no-underline rounded-2xl border border-slate-200 p-5 hover:border-emerald-300 hover:bg-emerald-50/40 transition">
+            <i class="fas fa-envelope text-emerald-600" aria-hidden="true"></i>
+            <h2 class="!mt-3 !mb-1 !text-base">Email support</h2>
+            <p class="!m-0 text-sm break-all">{{ support_email }}</p>
+          </a>
+          <a href="tel:{{ support_phone|replace(' ', '') }}" class="!no-underline rounded-2xl border border-slate-200 p-5 hover:border-emerald-300 hover:bg-emerald-50/40 transition">
+            <i class="fas fa-phone text-emerald-600" aria-hidden="true"></i>
+            <h2 class="!mt-3 !mb-1 !text-base">Phone support</h2>
+            <p class="!m-0 text-sm">{{ support_phone }}</p>
+          </a>
+        </div>
+
+        <h2>What to include</h2>
+        <ul>
+          <li>Your business name and a safe callback email/phone.</li>
+          <li>The affected feature, approximate time, recipient country, and expected result.</li>
+          <li>Meta error code, template name, campaign ID, or message ID when available.</li>
+          <li>A redacted screenshot that does not expose tokens, secrets, passwords, or customer message content.</li>
+        </ul>
+
+        <h2>Issue categories</h2>
+        <h3>Platform and account help</h3>
+        <p>Login, configuration, templates, webhooks, contacts, conversations, broadcasts, reporting, billing, and account access.</p>
+        <h3>Privacy and data requests</h3>
+        <p>Use the dedicated <a href="/data-deletion">Data Deletion Instructions</a> for access, export, correction, or deletion.</p>
+        <h3>Security reports</h3>
+        <p>Use the subject <strong>Security report</strong>. Include reproducible details but do not access, alter, or download data that does not belong to you.</p>
+        <h3>Meta account enforcement</h3>
+        <p>We can help diagnose integration errors, but Meta controls business verification, template review, phone quality, messaging limits, payment holds, and policy enforcement. Appeals must use the route shown in WhatsApp Manager or Meta Business Support.</p>
+
+        <h2>Business details</h2>
+        <p><strong>{{ business_name }}</strong><br/>{{ business_address }}<br/>Email: <a href="mailto:{{ support_email }}">{{ support_email }}</a><br/>Phone: <a href="tel:{{ support_phone|replace(' ', '') }}">{{ support_phone }}</a></p>
+        {% endif %}
+      </article>
+    </section>
+  </main>
+
+  <footer class="bg-[#0d2523] text-slate-300 border-t border-white/10">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-9 grid md:grid-cols-[1fr_auto] gap-6 items-end">
+      <div>
+        <p class="text-white font-bold">{{ business_name }}</p>
+        <p class="text-xs text-slate-400 mt-1 max-w-xl">WhatsApp messaging tools built on Meta's official Cloud API. Meta and WhatsApp are trademarks of Meta Platforms, Inc.; Viviz is not endorsed by or affiliated with Meta unless expressly stated.</p>
+      </div>
+      <div class="flex flex-wrap gap-x-5 gap-y-2 text-xs">
+        <a href="/privacy" class="hover:text-white">Privacy</a>
+        <a href="/terms" class="hover:text-white">Terms</a>
+        <a href="/data-deletion" class="hover:text-white">Data deletion</a>
+        <a href="/support" class="hover:text-white">Support</a>
+        <a href="https://viviz.in/refund" class="hover:text-white" rel="noopener">Refund policy</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

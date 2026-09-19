@@ -75,9 +75,11 @@ Before starting Meta configuration, confirm these deployment prerequisites:
 - `https://meta.viviz.in/login` loads over valid HTTPS and an administrator can sign in.
 - The deployment uses `DEBUG=false`, unique production secrets, PostgreSQL, and a working backup.
 - The business has selected the actual public URLs it will use for its privacy policy and user-data
-  deletion instructions. Record them before App Review:
-  - Privacy Policy URL: `________________________________`
-  - User Data Deletion URL: `________________________________`
+  deletion instructions. Use these production pages in Meta App Settings:
+  - Privacy Policy URL: `https://meta.viviz.in/privacy`
+  - User Data Deletion URL: `https://meta.viviz.in/data-deletion`
+  - Terms and Conditions URL: `https://meta.viviz.in/terms`
+  - Support URL: `https://meta.viviz.in/support`
 
 ## 2. Create or select the Meta business portfolio
 
@@ -193,8 +195,8 @@ before revoking the old token.
 In **App settings > Basic**, complete the fields Meta presents, including:
 
 - App domains: `meta.viviz.in`
-- Privacy Policy URL: a public HTTPS page owned by the business
-- User Data Deletion URL or deletion instructions: a public HTTPS page
+- Privacy Policy URL: `https://meta.viviz.in/privacy`
+- User Data Deletion URL or deletion instructions: `https://meta.viviz.in/data-deletion`
 - Contact email: a monitored business address
 - App category and icon where required
 - Terms of Service URL, if the business has one
@@ -233,7 +235,7 @@ request is not an acceptable substitute for a verified/eligible business.
 |---|---|
 | App URL | `https://meta.viviz.in` |
 | Customer-facing Business Name | The exact name customers recognize |
-| Privacy Policy URL | The published HTTPS privacy-policy page |
+| Privacy Policy URL | `https://meta.viviz.in/privacy` |
 | Support Email | A monitored support address |
 | Support Phone | A monitored support number, preferably in international format |
 | WhatsApp Business Phone | The real WhatsApp number with country code and digits only, for example `919876543210` |

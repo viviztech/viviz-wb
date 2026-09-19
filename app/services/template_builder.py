@@ -65,6 +65,7 @@ def prepare_template(
     footer: str,
     body_examples_json: str,
     buttons_json: str,
+    header_handle: str = "",
 ) -> dict:
     clean_name = name.strip().lower().replace(" ", "_")
     if not TEMPLATE_NAME_RE.fullmatch(clean_name):
@@ -80,15 +81,19 @@ def prepare_template(
 
     header_type = header_type.strip().upper() or "NONE"
     header_text = header_text.strip()
-    if header_type not in {"NONE", "TEXT"}:
-        raise ValueError("This form currently supports no header or a text header.")
+    if header_type not in {"NONE", "TEXT", "IMAGE", "VIDEO", "DOCUMENT"}:
+        raise ValueError("Choose no header, text, image, video, or document.")
     if header_type == "TEXT":
         if not header_text or len(header_text) > 60 or "\n" in header_text:
             raise ValueError("Text headers must contain 1 to 60 characters on one line.")
         if VARIABLE_RE.search(header_text):
             raise ValueError("Header variables are not supported by this broadcast workflow.")
+    elif header_type == "NONE":
+        header_text = ""
     else:
         header_text = ""
+        if not header_handle.strip():
+            raise ValueError("Upload a sample file for the media header.")
 
     body = body.strip()
     footer = footer.strip()
@@ -118,6 +123,12 @@ def prepare_template(
     components: list[dict] = []
     if header_type == "TEXT":
         components.append({"type": "HEADER", "format": "TEXT", "text": header_text})
+    elif header_type in {"IMAGE", "VIDEO", "DOCUMENT"}:
+        components.append({
+            "type": "HEADER",
+            "format": header_type,
+            "example": {"header_handle": [header_handle.strip()]},
+        })
 
     body_component: dict = {"type": "BODY", "text": body}
     if variables:
@@ -135,7 +146,7 @@ def prepare_template(
         "category": category,
         "language": language,
         "header_type": header_type.lower() if header_type != "NONE" else None,
-        "header_content": header_text or None,
+        "header_content": (header_text or header_handle.strip()) or None,
         "body": body,
         "footer": footer or None,
         "variables": variables,
@@ -148,6 +159,12 @@ def components_from_template(template) -> list[dict]:
     components: list[dict] = []
     if template.header_type == "text" and template.header_content:
         components.append({"type": "HEADER", "format": "TEXT", "text": template.header_content})
+    elif template.header_type in {"image", "video", "document"} and template.header_content:
+        components.append({
+            "type": "HEADER",
+            "format": template.header_type.upper(),
+            "example": {"header_handle": [template.header_content]},
+        })
     body_component: dict = {"type": "BODY", "text": template.body}
     variables = template.variables or []
     if variables:

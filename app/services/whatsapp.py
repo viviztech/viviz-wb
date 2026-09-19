@@ -105,6 +105,59 @@ class WhatsAppService:
             response.raise_for_status()
             return response.json()
 
+    async def upload_template_sample(
+        self,
+        file_obj: BinaryIO,
+        filename: str,
+        mime_type: str,
+        file_size: int,
+    ) -> str:
+        """Upload template sample media and return Meta's resumable-upload handle."""
+        if not settings.meta_app_id:
+            raise ValueError("Meta App ID is required to upload template sample media.")
+
+        session_url = f"{settings.whatsapp_api_url}/{settings.meta_app_id}/uploads"
+        auth_headers = {"Authorization": f"Bearer {settings.whatsapp_access_token}"}
+
+        async def file_chunks():
+            file_obj.seek(0)
+            while True:
+                chunk = file_obj.read(1024 * 1024)
+                if not chunk:
+                    break
+                yield chunk
+
+        async with httpx.AsyncClient(timeout=120) as client:
+            session_response = await client.post(
+                session_url,
+                params={
+                    "file_length": file_size,
+                    "file_type": mime_type,
+                    "file_name": filename,
+                },
+                headers=auth_headers,
+            )
+            session_response.raise_for_status()
+            upload_id = session_response.json().get("id")
+            if not upload_id:
+                raise RuntimeError("Meta did not return a template media upload session.")
+
+            upload_response = await client.post(
+                f"{settings.whatsapp_api_url}/{upload_id}",
+                content=file_chunks(),
+                headers={
+                    **auth_headers,
+                    "Content-Type": mime_type,
+                    "Content-Length": str(file_size),
+                    "file_offset": "0",
+                },
+            )
+            upload_response.raise_for_status()
+            handle = upload_response.json().get("h")
+            if not handle:
+                raise RuntimeError("Meta did not return a template media handle.")
+            return str(handle)
+
     async def send_media(
         self,
         to: str,

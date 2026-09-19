@@ -1,16 +1,22 @@
 import json
 import unittest
-from unittest.mock import AsyncMock, patch
+from io import BytesIO
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, patch
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from starlette.requests import Request
+from starlette.datastructures import Headers, UploadFile
 
 import app.models  # noqa: F401 - register all tables
 from app.database import Base
+from app.config import settings
 from app.models.template import MessageTemplate
 from app.routers.templates import create_template
-from app.services.template_builder import prepare_template
+from app.services.media_validation import validate_template_header_upload
+from app.services.template_builder import components_from_template, prepare_template
+from app.services.whatsapp import WhatsAppService
 
 
 class TemplateBuilderTests(unittest.TestCase):
@@ -78,6 +84,40 @@ class TemplateBuilderTests(unittest.TestCase):
                 body_examples_json='["123456"]', buttons_json="[]",
             )
 
+    def test_builds_media_header_with_meta_sample_handle(self):
+        result = prepare_template(
+            name="visual_update", category="UTILITY", language="en",
+            header_type="IMAGE", header_text="", body="Your requested update.", footer="",
+            body_examples_json="[]", buttons_json="[]", header_handle="4::sample-handle",
+        )
+        self.assertEqual(result["header_type"], "image")
+        self.assertEqual(result["header_content"], "4::sample-handle")
+        self.assertEqual(result["components"][0], {
+            "type": "HEADER",
+            "format": "IMAGE",
+            "example": {"header_handle": ["4::sample-handle"]},
+        })
+
+        rebuilt = components_from_template(SimpleNamespace(
+            header_type="image", header_content="4::sample-handle",
+            body="Your requested update.", variables=[], footer=None, buttons=[],
+        ))
+        self.assertEqual(rebuilt[0], result["components"][0])
+
+    def test_validates_template_media_type_and_signature(self):
+        png = BytesIO(b"\x89PNG\r\n\x1a\n" + b"sample")
+        filename, size, mime = validate_template_header_upload(
+            png, "header.png", "image/png", "IMAGE"
+        )
+        self.assertEqual((filename, mime), ("header.png", "image/png"))
+        self.assertGreater(size, 0)
+
+        with self.assertRaisesRegex(ValueError, "requires an MP4"):
+            validate_template_header_upload(
+                BytesIO(b"\x89PNG\r\n\x1a\n" + b"sample"),
+                "header.png", "image/png", "VIDEO",
+            )
+
 
 class CreateTemplateRouteTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -141,3 +181,91 @@ class CreateTemplateRouteTests(unittest.IsolatedAsyncioTestCase):
             components = send.await_args.kwargs["components"]
             self.assertEqual(components[0], {"type": "BODY", "text": "Discover our latest services."})
             self.assertEqual(components[1]["type"], "FOOTER")
+
+    async def test_uploads_media_sample_and_submits_header_handle(self):
+        upload = UploadFile(
+            BytesIO(b"\x89PNG\r\n\x1a\n" + b"sample-image"),
+            filename="launch.png",
+            headers=Headers({"content-type": "image/png"}),
+        )
+        async with self.sessions() as db:
+            with patch(
+                "app.routers.templates.whatsapp.upload_template_sample",
+                new=AsyncMock(return_value="4::uploaded-handle"),
+            ) as media_upload, patch(
+                "app.routers.templates.whatsapp.create_template",
+                new=AsyncMock(return_value={"id": "meta-media-1", "status": "PENDING"}),
+            ) as submit:
+                response = await create_template(
+                    self.request,
+                    name="launch_visual",
+                    category="UTILITY",
+                    language="en",
+                    header_type="IMAGE",
+                    header_text="",
+                    body="Here is your requested launch update.",
+                    footer="",
+                    body_examples_json="[]",
+                    buttons_json="[]",
+                    submit_to_meta="true",
+                    header_media=upload,
+                    db=db,
+                )
+
+            self.assertEqual(response.status_code, 200)
+            media_upload.assert_awaited_once()
+            header = submit.await_args.kwargs["components"][0]
+            self.assertEqual(header["example"]["header_handle"], ["4::uploaded-handle"])
+            template = (await db.execute(select(MessageTemplate))).scalar_one()
+            self.assertEqual(template.header_type, "image")
+            self.assertEqual(template.header_content, "4::uploaded-handle")
+
+    async def test_media_template_cannot_save_an_expiring_handle_as_draft(self):
+        async with self.sessions() as db:
+            response = await create_template(
+                self.request,
+                name="media_draft",
+                category="UTILITY",
+                language="en",
+                header_type="IMAGE",
+                header_text="",
+                body="Your requested update.",
+                footer="",
+                body_examples_json="[]",
+                buttons_json="[]",
+                submit_to_meta="false",
+                header_media=None,
+                db=db,
+            )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("submitted to Meta immediately", response.body.decode())
+
+
+class TemplateMediaUploadTests(unittest.IsolatedAsyncioTestCase):
+    async def test_uses_app_resumable_upload_protocol(self):
+        old_app_id = settings.meta_app_id
+        settings.meta_app_id = "app-123"
+        try:
+            session_response = Mock()
+            session_response.json.return_value = {"id": "upload:session?sig=abc"}
+            session_response.raise_for_status.return_value = None
+            upload_response = Mock()
+            upload_response.json.return_value = {"h": "4::media-handle"}
+            upload_response.raise_for_status.return_value = None
+            client = AsyncMock()
+            client.__aenter__.return_value = client
+            client.post.side_effect = [session_response, upload_response]
+
+            with patch("app.services.whatsapp.httpx.AsyncClient", return_value=client):
+                handle = await WhatsAppService().upload_template_sample(
+                    BytesIO(b"sample"), "sample.png", "image/png", 6
+                )
+
+            self.assertEqual(handle, "4::media-handle")
+            first_call, second_call = client.post.await_args_list
+            self.assertTrue(first_call.args[0].endswith("/app-123/uploads"))
+            self.assertEqual(first_call.kwargs["params"]["file_length"], 6)
+            self.assertIn("upload:session?sig=abc", second_call.args[0])
+            self.assertEqual(second_call.kwargs["headers"]["file_offset"], "0")
+        finally:
+            settings.meta_app_id = old_app_id

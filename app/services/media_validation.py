@@ -51,6 +51,12 @@ MEDIA_TYPE_ALIASES = {
     "audio/opus": "audio/ogg",
 }
 
+TEMPLATE_HEADER_MIME_TYPES: dict[str, frozenset[str]] = {
+    "IMAGE": frozenset({"image/jpeg", "image/png"}),
+    "VIDEO": frozenset({"video/mp4"}),
+    "DOCUMENT": frozenset({"application/pdf"}),
+}
+
 
 def safe_filename(filename: str | None) -> str:
     """Return a display-safe basename while preserving its useful extension."""
@@ -130,3 +136,28 @@ def validate_media_upload(
         raise ValueError("The file contents do not match its declared type.")
 
     return rule, clean_name, size, mime_type
+
+
+def validate_template_header_upload(
+    file_obj: BinaryIO,
+    filename: str | None,
+    content_type: str | None,
+    header_type: str,
+) -> tuple[str, int, str]:
+    """Validate a sample file used to submit a media-header template to Meta."""
+    expected_type = (header_type or "").strip().upper()
+    allowed = TEMPLATE_HEADER_MIME_TYPES.get(expected_type)
+    if not allowed:
+        raise ValueError("Choose an image, video, or document header before uploading a sample.")
+
+    _rule, clean_name, size, mime_type = validate_media_upload(
+        file_obj, filename, content_type
+    )
+    if mime_type not in allowed:
+        expected = {
+            "IMAGE": "a JPG or PNG image",
+            "VIDEO": "an MP4 video",
+            "DOCUMENT": "a PDF document",
+        }[expected_type]
+        raise ValueError(f"The {expected_type.lower()} header requires {expected}.")
+    return clean_name, size, mime_type

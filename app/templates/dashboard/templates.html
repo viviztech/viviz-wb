@@ -34,7 +34,13 @@
       {% endif %}
     </div>
 
-    {% if t.header_content %}
+    {% if t.header_type in ['image', 'video', 'document'] %}
+    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Header</p>
+    <p class="text-xs text-gray-600 mb-2 bg-gray-50 rounded px-2 py-1">
+      <i class="fas {% if t.header_type == 'image' %}fa-image{% elif t.header_type == 'video' %}fa-video{% else %}fa-file-pdf{% endif %} mr-1"></i>
+      {{ t.header_type|title }} header
+    </p>
+    {% elif t.header_content %}
     <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Header</p>
     <p class="text-xs text-gray-600 mb-2 bg-gray-50 rounded px-2 py-1">{{ t.header_content }}</p>
     {% endif %}
@@ -103,7 +109,7 @@
     </div>
 
     <div class="grid lg:grid-cols-[minmax(0,3fr)_minmax(18rem,2fr)] min-h-0 flex-1">
-      <form id="tpl-form" class="p-5 sm:p-6 space-y-5 overflow-y-auto" oninput="refreshTemplateForm()">
+      <form id="tpl-form" enctype="multipart/form-data" class="p-5 sm:p-6 space-y-5 overflow-y-auto" oninput="refreshTemplateForm()">
         <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-teal-50 border border-teal-100 px-4 py-3">
           <div>
             <p class="text-xs font-semibold text-teal-800">Need a starting point?</p>
@@ -163,12 +169,21 @@
               class="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400">
               <option value="NONE">No header</option>
               <option value="TEXT">Text header</option>
+              <option value="IMAGE">Image header</option>
+              <option value="VIDEO">Video header</option>
+              <option value="DOCUMENT">Document header</option>
             </select>
           </div>
           <div id="header-text-wrap" class="hidden">
             <input id="header-text" type="text" name="header_text" maxlength="60" placeholder="Order confirmed"
               class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"/>
             <div class="flex justify-between mt-1 text-[11px] text-gray-400"><span>Variables are not supported in headers.</span><span id="header-count">0/60</span></div>
+          </div>
+          <div id="header-media-wrap" class="hidden rounded-xl border border-dashed border-teal-200 bg-teal-50/50 p-3">
+            <input id="header-media" type="file" name="header_media" onchange="updateMediaPreview()"
+              class="block w-full text-xs text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-teal-600 file:px-3 file:py-2 file:text-xs file:font-medium file:text-white hover:file:bg-teal-700"/>
+            <p id="header-media-help" class="text-[11px] text-teal-700 mt-2"></p>
+            <p class="text-[11px] text-gray-500 mt-1">This sample is uploaded securely to Meta and included with the approval request.</p>
           </div>
         </div>
 
@@ -228,7 +243,7 @@
             class="mt-0.5 h-4 w-4 text-teal-600 rounded border-gray-300 focus:ring-teal-500"/>
           <div>
             <label for="submit-meta-cb" class="text-sm font-medium text-teal-800 cursor-pointer">Submit to Meta for approval</label>
-            <p class="text-xs text-teal-600 mt-0.5">Leave off to save a local draft you can review first.</p>
+            <p id="submit-meta-note" class="text-xs text-teal-600 mt-0.5">Leave off to save a local draft you can review first.</p>
           </div>
         </div>
 
@@ -248,6 +263,11 @@
           </div>
           <div class="rounded-2xl bg-[#dfe9e5] border border-white/70 p-4 shadow-inner min-h-72 flex items-end">
             <div class="w-full max-w-sm ml-auto rounded-xl rounded-tr-sm bg-[#d9fdd3] px-3 py-2.5 shadow-sm">
+              <img id="preview-header-image" class="hidden w-full max-h-44 object-cover rounded-lg mb-2" alt="Template header preview"/>
+              <video id="preview-header-video" class="hidden w-full max-h-44 rounded-lg mb-2 bg-black" controls muted></video>
+              <div id="preview-header-document" class="hidden rounded-lg bg-white/70 border border-teal-100 p-3 mb-2 text-xs text-gray-700 items-center gap-2">
+                <i class="fas fa-file-pdf text-red-500 text-lg"></i><span id="preview-document-name" class="truncate"></span>
+              </div>
               <p id="preview-header" class="hidden text-sm font-semibold text-gray-900 mb-1"></p>
               <p id="preview-body" class="text-sm leading-5 text-gray-800 whitespace-pre-wrap">Your message preview appears here.</p>
               <p id="preview-footer" class="hidden text-xs text-gray-500 mt-2"></p>
@@ -279,6 +299,7 @@
 {% raw %}
   let templateButtonId = 0;
   let lastVariableKey = '';
+  let headerPreviewUrl = '';
 
   function closeTemplateModal() {
     document.getElementById('new-modal').classList.add('hidden');
@@ -300,9 +321,63 @@
   }
 
   function toggleHeaderField() {
-    const isText = document.getElementById('header-type').value === 'TEXT';
+    const type = document.getElementById('header-type').value;
+    const isText = type === 'TEXT';
+    const isMedia = ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(type);
     document.getElementById('header-text-wrap').classList.toggle('hidden', !isText);
+    document.getElementById('header-media-wrap').classList.toggle('hidden', !isMedia);
+    const media = document.getElementById('header-media');
+    if (media.dataset.headerType !== type) {
+      media.value = '';
+      media.dataset.headerType = type;
+    }
+    media.required = isMedia;
+    const submitMeta = document.getElementById('submit-meta-cb');
+    submitMeta.disabled = isMedia;
+    if (isMedia) submitMeta.checked = true;
+    document.getElementById('submit-meta-note').textContent = isMedia
+      ? 'Media templates are submitted immediately because Meta sample upload handles expire.'
+      : 'Leave off to save a local draft you can review first.';
+    const config = {
+      IMAGE: {accept: 'image/jpeg,image/png', help: 'JPG or PNG, up to 5 MB.'},
+      VIDEO: {accept: 'video/mp4', help: 'MP4, up to 16 MB.'},
+      DOCUMENT: {accept: 'application/pdf', help: 'PDF, up to 100 MB.'},
+    }[type];
+    media.accept = config?.accept || '';
+    document.getElementById('header-media-help').textContent = config?.help || '';
+    updateMediaPreview();
     refreshTemplateForm();
+  }
+
+  function updateMediaPreview() {
+    if (headerPreviewUrl) URL.revokeObjectURL(headerPreviewUrl);
+    headerPreviewUrl = '';
+    const type = document.getElementById('header-type').value;
+    const file = document.getElementById('header-media').files[0];
+    const image = document.getElementById('preview-header-image');
+    const video = document.getElementById('preview-header-video');
+    const documentPreview = document.getElementById('preview-header-document');
+    image.classList.add('hidden');
+    image.removeAttribute('src');
+    video.classList.add('hidden');
+    video.removeAttribute('src');
+    documentPreview.classList.add('hidden');
+    documentPreview.classList.remove('flex');
+    if (!file) return;
+
+    if (type === 'IMAGE') {
+      headerPreviewUrl = URL.createObjectURL(file);
+      image.src = headerPreviewUrl;
+      image.classList.remove('hidden');
+    } else if (type === 'VIDEO') {
+      headerPreviewUrl = URL.createObjectURL(file);
+      video.src = headerPreviewUrl;
+      video.classList.remove('hidden');
+    } else if (type === 'DOCUMENT') {
+      document.getElementById('preview-document-name').textContent = file.name;
+      documentPreview.classList.remove('hidden');
+      documentPreview.classList.add('flex');
+    }
   }
 
   function insertBodyVariable() {
@@ -468,7 +543,7 @@
 
     const cb = document.getElementById('submit-meta-cb');
     const fd = new FormData(form);
-    if (!cb.checked) fd.set('submit_to_meta', 'false');
+    fd.set('submit_to_meta', cb.checked ? 'true' : 'false');
 
     const button = document.getElementById('save-template-btn');
     button.disabled = true;

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Depends, Form
+from fastapi import APIRouter, Request, Depends, Form, File, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,11 +7,15 @@ from app.database import get_db
 from app.models.template import MessageTemplate
 from app.services.whatsapp import whatsapp
 from app.services.template_builder import components_from_template, prepare_template
+from app.services.media_validation import validate_template_header_upload
+import httpx
 import logging
+from typing import Annotated
 
 router = APIRouter(prefix="/templates", tags=["templates"])
 templates = Jinja2Templates(directory="app/templates")
 logger = logging.getLogger(__name__)
+MEDIA_HEADER_TYPES = {"IMAGE", "VIDEO", "DOCUMENT"}
 
 
 def _auth(request: Request):
@@ -102,11 +106,18 @@ async def create_template(
     body_examples_json: str = Form("[]"),
     buttons_json: str = Form("[]"),
     submit_to_meta: str = Form("false"),
+    header_media: Annotated[UploadFile | None, File()] = None,
     db: AsyncSession = Depends(get_db),
 ):
     if not _auth(request):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
+    normalized_header_type = header_type.strip().upper() or "NONE"
+    if normalized_header_type in MEDIA_HEADER_TYPES and submit_to_meta != "true":
+        return JSONResponse({
+            "error": "Media-header templates must be submitted to Meta immediately because sample upload handles expire."
+        }, status_code=400)
+    pending_handle = "pending-validation" if normalized_header_type in MEDIA_HEADER_TYPES else ""
     try:
         prepared = prepare_template(
             name=name,
@@ -118,6 +129,7 @@ async def create_template(
             footer=footer,
             body_examples_json=body_examples_json,
             buttons_json=buttons_json,
+            header_handle=pending_handle,
         )
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
@@ -129,6 +141,49 @@ async def create_template(
     )).scalar_one_or_none()
     if existing:
         return JSONResponse({"error": f"Template '{clean_name}' already exists"}, status_code=400)
+
+    if normalized_header_type in MEDIA_HEADER_TYPES:
+        if not header_media or not header_media.filename:
+            return JSONResponse({"error": "Upload a sample file for the media header."}, status_code=400)
+        try:
+            filename, file_size, mime_type = validate_template_header_upload(
+                header_media.file,
+                header_media.filename,
+                header_media.content_type,
+                normalized_header_type,
+            )
+            header_handle = await whatsapp.upload_template_sample(
+                header_media.file, filename, mime_type, file_size
+            )
+            prepared = prepare_template(
+                name=name,
+                category=category,
+                language=language,
+                header_type=header_type,
+                header_text=header_text,
+                body=body,
+                footer=footer,
+                body_examples_json=body_examples_json,
+                buttons_json=buttons_json,
+                header_handle=header_handle,
+            )
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        except httpx.HTTPStatusError as exc:
+            detail = "Meta rejected the template sample upload."
+            try:
+                meta_error = exc.response.json().get("error", {})
+                detail = meta_error.get("error_user_msg") or meta_error.get("message") or detail
+            except (ValueError, AttributeError):
+                pass
+            return JSONResponse({"error": detail}, status_code=422)
+        except Exception as exc:
+            logger.error(f"Template sample upload failed: {exc}")
+            return JSONResponse({"error": f"Template sample upload failed: {exc}"}, status_code=422)
+        finally:
+            await header_media.close()
+    elif header_media:
+        await header_media.close()
 
     tpl = MessageTemplate(
         name=clean_name,

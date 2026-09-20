@@ -6,6 +6,7 @@ import io
 import base64
 import re
 import time
+import logging
 import qrcode
 from fastapi import APIRouter, Request, Query, HTTPException
 from fastapi.responses import HTMLResponse, Response
@@ -16,6 +17,7 @@ from app.services.whatsapp import whatsapp
 
 router = APIRouter(prefix="/optin", tags=["optin"])
 templates = Jinja2Templates(directory="app/templates")
+logger = logging.getLogger(__name__)
 
 _phone_cache: tuple[str, float] = ("", 0.0)
 
@@ -44,17 +46,25 @@ async def _resolve_business_phone() -> str:
     try:
         display_phone = await whatsapp.get_display_phone_number()
     except Exception as exc:
+        fallback_phone = settings.support_phone
+        if _valid_customer_phone(fallback_phone):
+            logger.warning(
+                "Meta display-number lookup failed; using the configured support phone for opt-in",
+                exc_info=exc,
+            )
+            _phone_cache = (fallback_phone, time.monotonic() + 600)
+            return fallback_phone
         raise HTTPException(
             503,
-            "The WhatsApp display phone number could not be loaded from Meta. "
-            "Configure the real E.164 number in Settings; do not use the Phone Number ID.",
+            "WhatsApp opt-in is temporarily unavailable. Please contact support.",
         ) from exc
     if not _valid_customer_phone(display_phone):
-        raise HTTPException(
-            503,
-            "Meta did not return a valid WhatsApp display phone number. "
-            "Configure the real E.164 number in Settings.",
-        )
+        fallback_phone = settings.support_phone
+        if _valid_customer_phone(fallback_phone):
+            logger.warning("Meta returned an invalid display number; using the configured support phone")
+            _phone_cache = (fallback_phone, time.monotonic() + 600)
+            return fallback_phone
+        raise HTTPException(503, "WhatsApp opt-in is temporarily unavailable. Please contact support.")
     _phone_cache = (display_phone, time.monotonic() + 600)
     return display_phone
 

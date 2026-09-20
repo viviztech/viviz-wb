@@ -11,12 +11,15 @@ class OptInPhoneTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.old_business_phone = settings.whatsapp_business_phone
         self.old_phone_id = settings.whatsapp_phone_number_id
+        self.old_support_phone = settings.support_phone
         settings.whatsapp_phone_number_id = "1395769420275624"
+        settings.support_phone = "+91 93440 64631"
         optin._phone_cache = ("", 0.0)
 
     async def asyncTearDown(self):
         settings.whatsapp_business_phone = self.old_business_phone
         settings.whatsapp_phone_number_id = self.old_phone_id
+        settings.support_phone = self.old_support_phone
         optin._phone_cache = ("", 0.0)
 
     async def test_rejects_phone_number_id_and_resolves_meta_display_number(self):
@@ -48,8 +51,19 @@ class OptInPhoneTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(phone, "+91 93440 64631")
         resolver.assert_not_awaited()
 
-    async def test_fails_closed_when_meta_cannot_resolve_number(self):
+    async def test_uses_support_phone_when_meta_cannot_resolve_number(self):
         settings.whatsapp_business_phone = "1395769420275624"
+        with patch.object(
+            optin.whatsapp,
+            "get_display_phone_number",
+            new=AsyncMock(side_effect=RuntimeError("Meta unavailable")),
+        ):
+            phone = await optin._resolve_business_phone()
+        self.assertEqual(phone, "+91 93440 64631")
+
+    async def test_fails_closed_when_no_valid_phone_is_available(self):
+        settings.whatsapp_business_phone = "1395769420275624"
+        settings.support_phone = ""
         with patch.object(
             optin.whatsapp,
             "get_display_phone_number",

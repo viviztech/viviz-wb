@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 import httpx
 import markdown
@@ -16,6 +17,15 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 templates = Jinja2Templates(directory="app/templates")
 
 WABA_SETUP_DOC = Path(__file__).resolve().parent.parent.parent / "docs" / "WABA_SETUP.md"
+
+
+def _phone_digits(value: str) -> str:
+    return re.sub(r"\D", "", value or "")
+
+
+def _valid_display_phone(value: str, phone_number_id: str) -> bool:
+    digits = _phone_digits(value)
+    return 7 <= len(digits) <= 15 and digits != _phone_digits(phone_number_id)
 
 
 def _mask(value: str, keep: int = 4) -> str:
@@ -111,7 +121,7 @@ def _build_sections() -> list[dict]:
 
 
 @router.get("", response_class=HTMLResponse)
-async def settings_page(request: Request, saved: str = ""):
+async def settings_page(request: Request, saved: str = "", error: str = ""):
     if not request.session.get("admin_email"):
         return RedirectResponse("/login", status_code=302)
 
@@ -127,6 +137,7 @@ async def settings_page(request: Request, saved: str = ""):
         "total_fields": total_fields,
         "missing": missing,
         "saved": bool(saved),
+        "error": error,
         "webhook_callback_url": f"{settings.app_url.rstrip('/')}/webhook",
     })
 
@@ -138,6 +149,13 @@ async def update_settings(request: Request, db: AsyncSession = Depends(get_db)):
         return RedirectResponse("/login", status_code=302)
 
     form = await request.form()
+    submitted_phone = str(form.get("whatsapp_business_phone") or "").strip()
+    submitted_phone_id = str(form.get("whatsapp_phone_number_id") or settings.whatsapp_phone_number_id).strip()
+    if submitted_phone and not _valid_display_phone(submitted_phone, submitted_phone_id):
+        return RedirectResponse(
+            "/settings?error=Enter+the+real+international+WhatsApp+number,+not+the+Phone+Number+ID.",
+            status_code=302,
+        )
     changed = []
     for key in EDITABLE_SETTINGS:
         if key not in form:
@@ -178,7 +196,7 @@ async def settings_guide(request: Request):
 
 
 @router.post("/test-connection")
-async def test_connection(request: Request):
+async def test_connection(request: Request, db: AsyncSession = Depends(get_db)):
     """Calls the Meta Graph API with the configured credentials to confirm they actually work."""
     if not request.session.get("admin_email"):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -198,12 +216,18 @@ async def test_connection(request: Request):
             r = await client.get(url, params=params, headers=headers)
         if r.status_code == 200:
             data = r.json()
+            display_phone = str(data.get("display_phone_number") or "")
+            phone_saved = False
+            if _valid_display_phone(display_phone, settings.whatsapp_phone_number_id):
+                await save_override(db, "whatsapp_business_phone", display_phone)
+                phone_saved = True
             return JSONResponse({
                 "ok": True,
                 "verified_name": data.get("verified_name"),
-                "display_phone_number": data.get("display_phone_number"),
+                "display_phone_number": display_phone,
                 "quality_rating": data.get("quality_rating"),
                 "code_verification_status": data.get("code_verification_status"),
+                "phone_saved": phone_saved,
             })
         else:
             detail = r.json().get("error", {}).get("message", r.text) if r.headers.get("content-type", "").startswith("application/json") else r.text

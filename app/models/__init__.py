@@ -14,6 +14,7 @@ from app.models.lead import Lead
 from app.models.audit import AuditLog
 from app.models.setting import AppSetting
 from app.models.consent import ConsentEvent
+from app.models.password_reset import PasswordResetToken
 
 __all__ = [
     "Contact", "Conversation", "Message", "MessageTemplate",
@@ -22,4 +23,5 @@ __all__ = [
     "CampaignFlow", "CampaignFlowStep", "CampaignFlowState",
     "TrackedLink", "LinkClick",
     "MMLiteOnboarding", "Lead", "AuditLog", "AppSetting", "ConsentEvent",
+    "PasswordResetToken",
 ]

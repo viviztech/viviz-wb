@@ -27,6 +27,15 @@ class Settings(BaseSettings):
     whatsapp_business_phone: str = "+91 93420 64631"
     marketing_max_messages_per_7_days: int = 2
 
+    # Transactional email (password resets)
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    smtp_use_tls: bool = True
+    password_reset_ttl_minutes: int = 30
+
     # Database
     database_url: str = "sqlite+aiosqlite:///./whatsapp.db"
 
@@ -80,6 +89,12 @@ EDITABLE_SETTINGS = [
     "support_email",
     "support_phone",
     "whatsapp_business_phone",
+    "smtp_host",
+    "smtp_port",
+    "smtp_username",
+    "smtp_password",
+    "smtp_from_email",
+    "smtp_use_tls",
     "anthropic_api_key",
     "aws_access_key_id",
     "aws_secret_access_key",

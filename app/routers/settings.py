@@ -101,6 +101,18 @@ def _build_sections() -> list[dict]:
             ],
         },
         {
+            "name": "Password Reset Email (SMTP)",
+            "icon": "fa-envelope",
+            "fields": [
+                _field("SMTP Host", "smtp_host", settings.smtp_host, editable=True),
+                _field("SMTP Port", "smtp_port", str(settings.smtp_port), editable=True),
+                _field("SMTP Username", "smtp_username", settings.smtp_username, editable=True),
+                _field("SMTP Password", "smtp_password", settings.smtp_password, secret=True, editable=True),
+                _field("From Email", "smtp_from_email", settings.smtp_from_email, editable=True),
+                _field("Use STARTTLS (true/false)", "smtp_use_tls", str(settings.smtp_use_tls).lower(), editable=True),
+            ],
+        },
+        {
             "name": "Claude AI",
             "icon": "fa-robot",
             "fields": [
@@ -149,6 +161,15 @@ async def update_settings(request: Request, db: AsyncSession = Depends(get_db)):
         return RedirectResponse("/login", status_code=302)
 
     form = await request.form()
+    submitted_smtp_port = str(form.get("smtp_port") or settings.smtp_port).strip()
+    try:
+        if not 1 <= int(submitted_smtp_port) <= 65535:
+            raise ValueError
+    except ValueError:
+        return RedirectResponse("/settings?error=SMTP+port+must+be+between+1+and+65535.", status_code=302)
+    submitted_smtp_tls = str(form.get("smtp_use_tls") or settings.smtp_use_tls).strip().lower()
+    if submitted_smtp_tls not in {"true", "false", "1", "0", "yes", "no", "on", "off"}:
+        return RedirectResponse("/settings?error=SMTP+STARTTLS+must+be+true+or+false.", status_code=302)
     submitted_phone = str(form.get("whatsapp_business_phone") or "").strip()
     submitted_phone_id = str(form.get("whatsapp_phone_number_id") or settings.whatsapp_phone_number_id).strip()
     if submitted_phone and not _valid_display_phone(submitted_phone, submitted_phone_id):

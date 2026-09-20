@@ -10,6 +10,19 @@ from app.models.setting import AppSetting
 logger = logging.getLogger(__name__)
 
 
+def _coerce_setting(key: str, value: str):
+    """Convert persisted strings back to the configured setting's type."""
+    current = getattr(settings, key)
+    if isinstance(current, bool):
+        normalized = value.strip().lower()
+        if normalized not in {"true", "false", "1", "0", "yes", "no", "on", "off"}:
+            raise ValueError(f"{key} must be true or false")
+        return normalized in {"true", "1", "yes", "on"}
+    if isinstance(current, int):
+        return int(value)
+    return value
+
+
 def _valid_business_phone(value: str, phone_number_id: str) -> bool:
     digits = re.sub(r"\D", "", value or "")
     id_digits = re.sub(r"\D", "", phone_number_id or "")
@@ -35,7 +48,10 @@ async def load_overrides(db: AsyncSession) -> None:
                 "Ignoring invalid WhatsApp business phone override; use the real E.164 number, not the Phone Number ID"
             )
             continue
-        setattr(settings, key, value)
+        try:
+            setattr(settings, key, _coerce_setting(key, value))
+        except (TypeError, ValueError):
+            logger.warning("Ignoring invalid stored value for %s", key)
 
 
 async def save_override(db: AsyncSession, key: str, value: str) -> None:
@@ -47,4 +63,4 @@ async def save_override(db: AsyncSession, key: str, value: str) -> None:
         existing.value = value
     else:
         db.add(AppSetting(key=key, value=value))
-    setattr(settings, key, value)
+    setattr(settings, key, _coerce_setting(key, value))

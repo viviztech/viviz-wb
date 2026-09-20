@@ -509,6 +509,18 @@ Stop broadcasts, inspect Account Quality and WhatsApp Manager, resolve payment o
 and follow Meta's appeal path when appropriate. Do not retry around a restriction or switch to an
 unofficial bulk-sending tool.
 
+### Administrator password reset email
+
+The **Forgot password?** link on the login page requires SMTP delivery. While signed in, open
+**Settings > Password Reset Email (SMTP)** and configure the SMTP host, port, username, password,
+from-address, and STARTTLS setting supplied by your email provider. Use a dedicated transactional
+mailbox rather than a personal password.
+
+Reset links expire after 30 minutes, can be used only once, and are stored in the database only as
+SHA-256 hashes. The public request page always displays the same response whether or not an admin
+account exists. If SMTP delivery fails, the generated token is immediately invalidated and the
+failure is recorded in server logs and the audit trail without exposing the link.
+
 ## 19. Security and operating routine
 
 Daily or before a campaign:

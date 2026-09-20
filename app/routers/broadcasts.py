@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Depends, Form, HTTPException
+from fastapi import APIRouter, Request, Depends, Form, HTTPException, File, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +21,8 @@ from app.services.consent import (
     marketing_frequency_allowed,
     validate_broadcast_template,
 )
+from app.services.media_validation import validate_template_header_upload
+from app.services.template_builder import extract_variable_numbers
 
 router = APIRouter(prefix="/broadcasts", tags=["broadcasts"])
 templates = Jinja2Templates(directory="app/templates")
@@ -34,12 +36,74 @@ def _auth(request: Request):
     return request.session.get("admin_email")
 
 
-def _build_components(resolved_vars: dict) -> Optional[list]:
-    """Build Meta template components from resolved variable dict {1: val, 2: val}."""
-    if not resolved_vars:
-        return None
-    params = [{"type": "text", "text": str(v)} for k, v in sorted(resolved_vars.items(), key=lambda x: str(x[0]))]
-    return [{"type": "body", "parameters": params}]
+_MEDIA_HEADER_TYPES = {"image", "video", "document"}
+_HEADER_MEDIA_ID_KEY = "__header_media_id"
+_HEADER_FILENAME_KEY = "__header_filename"
+
+
+def _body_variable_positions(template: MessageTemplate) -> list[int]:
+    positions = []
+    for item in template.variables or []:
+        if isinstance(item, dict) and str(item.get("position", "")).isdigit():
+            positions.append(int(item["position"]))
+    return sorted(set(positions)) or extract_variable_numbers(template.body or "")
+
+
+def _build_components(
+    template: MessageTemplate,
+    resolved_vars: dict,
+    campaign_vars: dict | None = None,
+) -> Optional[list]:
+    """Build send-time components that exactly match the approved template."""
+    campaign_vars = campaign_vars or {}
+    components: list[dict] = []
+    header_type = (template.header_type or "").lower()
+
+    if header_type in _MEDIA_HEADER_TYPES:
+        media_id = str(campaign_vars.get(_HEADER_MEDIA_ID_KEY) or "").strip()
+        if not media_id:
+            raise ValueError(
+                f"Template requires a {header_type} header attachment. "
+                "Create a new campaign and upload the attachment."
+            )
+        media_value = {"id": media_id}
+        if header_type == "document" and campaign_vars.get(_HEADER_FILENAME_KEY):
+            media_value["filename"] = str(campaign_vars[_HEADER_FILENAME_KEY])
+        components.append({
+            "type": "header",
+            "parameters": [{"type": header_type, header_type: media_value}],
+        })
+
+    expected = _body_variable_positions(template)
+    supplied = {
+        int(key): value
+        for key, value in (resolved_vars or {}).items()
+        if str(key).isdigit()
+    }
+    if set(supplied) != set(expected):
+        missing = sorted(set(expected) - set(supplied))
+        extra = sorted(set(supplied) - set(expected))
+        details = []
+        if missing:
+            details.append("missing " + ", ".join(f"{{{{{n}}}}}" for n in missing))
+        if extra:
+            details.append("unexpected " + ", ".join(f"{{{{{n}}}}}" for n in extra))
+        raise ValueError("Template variable mapping mismatch: " + "; ".join(details))
+    empty = [position for position in expected if not str(supplied[position]).strip()]
+    if empty:
+        raise ValueError(
+            "Template variables resolved to empty text: "
+            + ", ".join(f"{{{{{position}}}}}" for position in empty)
+        )
+    if expected:
+        components.append({
+            "type": "body",
+            "parameters": [
+                {"type": "text", "text": str(supplied[position])}
+                for position in expected
+            ],
+        })
+    return components or None
 
 
 def _resolve_variables(variable_mapping: dict, contact: Contact, static_vars: dict) -> dict:
@@ -48,7 +112,11 @@ def _resolve_variables(variable_mapping: dict, contact: Contact, static_vars: di
     variable_mapping: {"1": "name"} means {{1}} = contact.name
     static_vars: {"2": "50% OFF"} means {{2}} = literal value
     """
-    resolved = dict(static_vars or {})
+    resolved = {
+        str(key): value
+        for key, value in (static_vars or {}).items()
+        if str(key).isdigit()
+    }
     field_map = {
         "name": contact.name or contact.profile_name or "",
         "phone": contact.phone or "",
@@ -181,6 +249,7 @@ async def create_broadcast(
     scheduled_at: str = Form(""),
     compliance_confirmed: str = Form("false"),
     regulated_content: str = Form(""),
+    header_media: UploadFile | None = File(None),
     db: AsyncSession = Depends(get_db),
 ):
     if not _auth(request):
@@ -211,6 +280,8 @@ async def create_broadcast(
         seg_filter = json.loads(segment_filter) if segment_filter else {}
     except json.JSONDecodeError:
         return JSONResponse({"error": "Invalid JSON in variables or segment"}, status_code=400)
+    if not all(isinstance(value, dict) for value in (var_mapping, static_vars, seg_filter)):
+        return JSONResponse({"error": "Variables and segment filters must be JSON objects"}, status_code=400)
 
     consent_ids = await eligible_contact_ids(db, category)
     contacts = []
@@ -235,6 +306,44 @@ async def create_broadcast(
     if not contacts:
         return JSONResponse({
             "error": f"No contacts have active {category} consent and pass suppression/frequency rules"
+        }, status_code=400)
+
+    mapping_positions = {int(key) for key in var_mapping if str(key).isdigit()}
+    static_positions = {int(key) for key in static_vars if str(key).isdigit()}
+    expected_positions = set(_body_variable_positions(template))
+    if mapping_positions & static_positions or (mapping_positions | static_positions) != expected_positions:
+        return JSONResponse({
+            "error": "Map every template body variable exactly once before creating the campaign."
+        }, status_code=400)
+
+    header_type = (template.header_type or "").lower()
+    if header_type in _MEDIA_HEADER_TYPES:
+        if not header_media or not header_media.filename:
+            return JSONResponse({
+                "error": f"The selected template requires a {header_type} header attachment."
+            }, status_code=400)
+        try:
+            filename, _size, mime_type = validate_template_header_upload(
+                header_media.file,
+                header_media.filename,
+                header_media.content_type,
+                header_type.upper(),
+            )
+            upload = await whatsapp.upload_media(header_media.file, filename, mime_type)
+            media_id = str(upload.get("id") or "")
+            if not media_id:
+                raise ValueError("Meta did not return a media ID for the attachment.")
+            static_vars[_HEADER_MEDIA_ID_KEY] = media_id
+            static_vars[_HEADER_FILENAME_KEY] = filename
+        except Exception as ex:
+            logger.warning("Broadcast header upload failed: %s", ex)
+            return JSONResponse({"error": f"Could not upload template header: {ex}"}, status_code=400)
+        finally:
+            await header_media.close()
+    elif header_media and header_media.filename:
+        await header_media.close()
+        return JSONResponse({
+            "error": "The selected template does not accept a header attachment."
         }, status_code=400)
 
     scheduled_dt = None
@@ -600,33 +709,42 @@ async def _send_broadcast_messages(broadcast_id: int):
                 logger.info(f"Broadcast {broadcast_id}: {suppression_reason} for contact {contact.id}")
                 continue
 
-            components = _build_components(recipient.resolved_variables or {})
+            try:
+                components = _build_components(
+                    template,
+                    recipient.resolved_variables or {},
+                    broadcast.variables or {},
+                )
+            except ValueError as ex:
+                recipient.status = "failed"
+                recipient.error_message = str(ex)[:500]
+                recipient.retry_attempts = 0
+                failed += 1
+                broadcast.failed_count = failed
+                await db.commit()
+                logger.error(
+                    "Broadcast %s: component validation failed for contact %s: %s",
+                    broadcast_id, contact.id, ex,
+                )
+                continue
             success = False
             last_error = ""
 
-            # Try with components first; if Meta returns #132000 (param mismatch),
-            # fall back to sending without components (template has no variables on Meta side).
-            send_attempts = [(components,)] if components else [(None,)]
-            if components:
-                send_attempts.append((None,))  # fallback
-
-            for components_try in send_attempts:
-                comps = components_try[0]
-                for attempt in range(MAX_RETRY_ATTEMPTS):
+            for attempt in range(MAX_RETRY_ATTEMPTS):
                     try:
                         if use_marketing_api:
                             result = await send_marketing_template(
                                 contact.phone,
                                 broadcast.template_name,
                                 language_code=broadcast.template_language or "en",
-                                components=comps,
+                                components=components,
                             )
                         else:
                             result = await whatsapp.send_template(
                                 contact.phone,
                                 broadcast.template_name,
                                 language_code=broadcast.template_language or "en",
-                                components=comps,
+                                components=components,
                             )
                         wa_msg_id = result.get("messages", [{}])[0].get("id")
                         recipient.wa_message_id = wa_msg_id
@@ -645,9 +763,6 @@ async def _send_broadcast_messages(broadcast_id: int):
                             break
                         if attempt < MAX_RETRY_ATTEMPTS - 1:
                             await asyncio.sleep(2 ** attempt)
-                if success:
-                    break
-
             if not success:
                 recipient.status = "failed"
                 recipient.error_message = last_error[:500]
@@ -707,7 +822,11 @@ def _extract_meta_error(ex: Exception) -> str:
         if isinstance(ex, httpx.HTTPStatusError):
             body = ex.response.json()
             meta_err = body.get("error", {})
-            return meta_err.get("error_user_msg") or meta_err.get("message") or str(ex)
+            code = meta_err.get("code")
+            message = meta_err.get("error_user_msg") or meta_err.get("message") or "Meta rejected the message"
+            details = (meta_err.get("error_data") or {}).get("details")
+            prefix = f"(#{code}) " if code else ""
+            return f"{prefix}{message}" + (f" Details: {details}" if details else "")
     except Exception:
         pass
     return str(ex)
@@ -715,7 +834,13 @@ def _extract_meta_error(ex: Exception) -> str:
 
 def _is_param_mismatch_error(error_msg: str) -> bool:
     """Meta #132000 — template approved without variables, but we sent parameters."""
-    return "132000" in error_msg or "number of parameters does not match" in error_msg.lower()
+    lower = error_msg.lower()
+    return (
+        "132000" in error_msg
+        or "132012" in error_msg
+        or "number of parameters does not match" in lower
+        or "parameter format does not match" in lower
+    )
 
 
 def _is_spam_rate_limit(error_msg: str) -> bool:

@@ -36,6 +36,18 @@ def create_session_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def password_strength_error(password: str) -> str | None:
+    if len(password) < 10:
+        return "Password must be at least 10 characters."
+    if not any(c.isupper() for c in password):
+        return "Password must contain at least one uppercase letter."
+    if not any(c.islower() for c in password):
+        return "Password must contain at least one lowercase letter."
+    if not any(c.isdigit() for c in password):
+        return "Password must contain at least one number."
+    return None
+
+
 async def authenticate_admin(email: str, password: str, db: AsyncSession) -> Optional[Admin]:
     result = await db.execute(select(Admin).where(Admin.email == email, Admin.is_active == True))
     admin = result.scalar_one_or_none()

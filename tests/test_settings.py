@@ -10,6 +10,7 @@ from app.config import settings
 from app.database import Base
 from app.models.setting import AppSetting
 from app.routers.settings import _valid_display_phone, test_connection
+from app.services.app_settings import load_overrides
 
 
 class PhoneSettingValidationTests(unittest.TestCase):
@@ -68,3 +69,16 @@ class TestConnectionSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(payload["phone_saved"])
         self.assertEqual(settings.whatsapp_business_phone, "+91 93440 64631")
         self.assertEqual(stored.value, "+91 93440 64631")
+
+    async def test_stale_phone_number_id_override_does_not_mask_configured_number(self):
+        settings.whatsapp_business_phone = "+91 93420 64631"
+        async with self.sessions() as db:
+            db.add_all([
+                AppSetting(key="whatsapp_phone_number_id", value="1395769420275624"),
+                AppSetting(key="whatsapp_business_phone", value="1395769420275624"),
+            ])
+            await db.flush()
+            await load_overrides(db)
+
+        self.assertEqual(settings.whatsapp_phone_number_id, "1395769420275624")
+        self.assertEqual(settings.whatsapp_business_phone, "+91 93420 64631")

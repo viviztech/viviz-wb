@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     privacy_policy_url: str = "https://meta.viviz.in/privacy"
     support_email: str = "online@viviz.in"
     support_phone: str = "+91 93440 64631"
-    whatsapp_business_phone: str = ""
+    whatsapp_business_phone: str = "+91 93420 64631"
     marketing_max_messages_per_7_days: int = 2
 
     # Database

@@ -23,42 +23,20 @@ async def handle_webhook_payload(payload: dict, db: AsyncSession):
                 field = change.get("field", "")
                 value = change.get("value", {})
 
-                if field == "marketing_messages":
-                    await _process_marketing_messages_field(value, db)
-                else:
+                if field == "messages":
                     await _process_value(value, db)
+                else:
+                    # Keep an audit record for subscribed account-level events,
+                    # but only the standard messages field contains message and
+                    # delivery status payloads handled by this service.
+                    db.add(WebhookLog(
+                        event_type=f"unhandled_{field or 'unknown'}",
+                        payload=value,
+                    ))
     except Exception as ex:
         logger.error(f"Webhook processing error: {ex}")
         log = WebhookLog(payload=payload, processed="error", error=str(ex))
         db.add(log)
-
-
-async def _process_marketing_messages_field(value: dict, db: AsyncSession):
-    """
-    Handle events delivered under the `marketing_messages` webhook field.
-    Covers:
-    - tos_signed: business accepted MM Lite Terms of Service
-    - message_deliveries / message_reads: MM Lite delivery metrics
-    - message_errors: MM Lite send failures
-    """
-    event_type = value.get("event")
-
-    if event_type == "tos_signed":
-        from app.routers.mm_lite import handle_tos_signed_event
-        await handle_tos_signed_event(value, db)
-        db.add(WebhookLog(event_type="mm_lite_tos_signed", payload=value))
-        logger.info("MM Lite ToS signed event processed")
-        return
-
-    # Delivery / read / error metrics from MM Lite
-    if event_type in ("message_deliveries", "message_reads", "message_errors"):
-        db.add(WebhookLog(event_type=f"mm_lite_{event_type}", payload=value))
-        logger.debug(f"MM Lite event logged: {event_type}")
-        return
-
-    # Fallback: log unknown marketing_messages events
-    db.add(WebhookLog(event_type="mm_lite_unknown", payload=value))
-    logger.debug(f"Unknown marketing_messages event: {event_type}")
 
 
 async def _process_value(value: dict, db: AsyncSession):
@@ -201,6 +179,18 @@ async def _handle_status_update(status: dict, db: AsyncSession):
 
     wa_message_id = status.get("id", "")
     new_status = status.get("status", "")
+    pricing = status.get("pricing") or {}
+    conversation = status.get("conversation") or {}
+    origin = conversation.get("origin") or {}
+    is_marketing_api = (
+        pricing.get("category") == "marketing_lite"
+        or origin.get("type") == "marketing_lite"
+    )
+
+    if is_marketing_api:
+        from app.routers.mm_lite import mark_marketing_api_verified
+        await mark_marketing_api_verified(status, db)
+        logger.info("Marketing Messages routing verified for message %s", wa_message_id)
 
     status_map = {
         "sent": MessageStatus.sent,
@@ -257,7 +247,10 @@ async def _handle_status_update(status: dict, db: AsyncSession):
             logger.info(f"Broadcast recipient {wa_message_id} marked failed")
 
     db.add(WebhookLog(
-        event_type=f"status_{new_status}",
+        event_type=(
+            f"marketing_message_status_{new_status}"
+            if is_marketing_api else f"status_{new_status}"
+        ),
         wa_message_id=wa_message_id,
         payload=status,
     ))

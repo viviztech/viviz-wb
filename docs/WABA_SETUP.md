@@ -263,9 +263,24 @@ require a restart/redeployment when changed.
 6. Subscribe to the `messages` webhook field.
 
 The `messages` field carries incoming messages and outgoing sent/delivered/read/failed status
-updates used by this application. Subscribe to `marketing_messages` only if you intentionally use
-the dashboard's Marketing Messages Lite onboarding. Other Meta fields are not required by the
-current application.
+updates used by this application, including Marketing Messages API delivery status. There is no
+separate `marketing_messages` webhook subscription in the current integration. Other Meta fields
+are not required by the current application.
+
+### Marketing Messages API setup
+
+Meta now completes this product setup in the App Dashboard rather than through a custom OAuth
+callback. Open **App Dashboard > WhatsApp > Quickstart**, locate **Improve ROI with marketing
+messages with optimizations**, choose **Get started**, continue to the integration guide, and
+accept the Terms of Service. The app sends approved MARKETING broadcasts to:
+
+```text
+POST /<WHATSAPP_BUSINESS_PHONE_NUMBER_ID>/marketing_messages
+```
+
+Meta reports optimized routing in the normal `messages` status webhook by setting
+`pricing.category` or `conversation.origin.type` to `marketing_lite`. The Marketing API dashboard records
+that webhook as routing proof. A successful credential check alone does not prove eligibility.
 
 Webhook security has two separate checks:
 

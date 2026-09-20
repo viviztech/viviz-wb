@@ -503,19 +503,6 @@ async def delete_broadcast(broadcast_id: int, request: Request, db: AsyncSession
     return JSONResponse({"status": "deleted"})
 
 
-async def _is_mm_lite_active(db) -> bool:
-    """Return True if MM Lite onboarding is complete for this WABA."""
-    from app.models.mm_lite import MMLiteOnboarding
-    from app.config import settings as _settings
-    waba_id = _settings.whatsapp_business_account_id
-    if not waba_id:
-        return False
-    record = (await db.execute(
-        select(MMLiteOnboarding).where(MMLiteOnboarding.waba_id == waba_id)
-    )).scalar_one_or_none()
-    return record is not None and record.status == "active"
-
-
 async def _get_template_category(template_name: str, db) -> str:
     """Look up the category of a template from the local DB. Defaults to UTILITY."""
     tpl = (await db.execute(
@@ -529,10 +516,10 @@ async def _send_broadcast_messages(broadcast_id: int):
     Core send engine with rate limiting and retry support.
     Rate: SEND_RATE_PER_SEC msgs/sec (far below Meta's 80/sec cap).
     Auto-retries transient failures up to MAX_RETRY_ATTEMPTS with exponential backoff.
-    Uses MM Lite delivery when WABA is onboarded and template is MARKETING category.
+    Sends MARKETING templates through Meta's dedicated Marketing Messages API.
     """
     from app.database import AsyncSessionLocal
-    from app.services.mm_lite import send_mm_lite_template
+    from app.services.mm_lite import send_marketing_template
 
     async with AsyncSessionLocal() as db:
         broadcast = (await db.execute(select(Broadcast).where(Broadcast.id == broadcast_id))).scalar_one_or_none()
@@ -576,13 +563,13 @@ async def _send_broadcast_messages(broadcast_id: int):
             # Reduce campaign velocity while Meta reports degraded quality.
             delay = 1.0
 
-        # Determine whether to route through MM Lite for this broadcast
-        use_mm_lite = (
-            await _is_mm_lite_active(db)
-            and await _get_template_category(broadcast.template_name, db) == "MARKETING"
+        # Meta instructs businesses to send all MARKETING templates to this
+        # endpoint; Meta then automatically routes eligible messages.
+        use_marketing_api = (
+            await _get_template_category(broadcast.template_name, db) == "MARKETING"
         )
-        if use_mm_lite:
-            logger.info(f"Broadcast {broadcast_id}: routing through MM Lite")
+        if use_marketing_api:
+            logger.info(f"Broadcast {broadcast_id}: routing through Marketing Messages API")
 
         for recipient in recipients:
             contact = (await db.execute(select(Contact).where(Contact.id == recipient.contact_id))).scalar_one_or_none()
@@ -627,8 +614,8 @@ async def _send_broadcast_messages(broadcast_id: int):
                 comps = components_try[0]
                 for attempt in range(MAX_RETRY_ATTEMPTS):
                     try:
-                        if use_mm_lite:
-                            result = await send_mm_lite_template(
+                        if use_marketing_api:
+                            result = await send_marketing_template(
                                 contact.phone,
                                 broadcast.template_name,
                                 language_code=broadcast.template_language or "en",
